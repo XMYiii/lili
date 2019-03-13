@@ -1,1 +1,337 @@
+import wx
 
+
+class ClientGui(wx.App):
+    def OnInit(self):
+        self.frame = MainFrame(None, title='PCIE Test')
+        self.frame.SetDimensions(500, 100, 1050, 720)
+        self.frame.Show()
+        return True
+
+
+class MainFrame(wx.Frame):
+    def __init__(self, *args, **kwargs):
+        super(MainFrame, self).__init__(*args, **kwargs)
+        self.panel = MainPanel(self)
+
+        menuBar = wx.MenuBar()
+
+        startButton = wx.Menu()
+        fileButton = wx.Menu()
+        helpButton = wx.Menu()
+
+        exitItem = startButton.Append(wx.ID_EXIT, 'Exit', 'status msg...')
+
+        menuBar.Append(startButton, 'Start')
+        menuBar.Append(fileButton, 'File')  # 菜单栏
+        menuBar.Append(helpButton, 'Help')
+
+        self.SetMenuBar(menuBar)
+        self.Bind(wx.EVT_MENU, self.Quit, exitItem)
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        sizer.Add(self.panel, 1, wx.EXPAND)
+        self.SetSizer(sizer)
+        self.SetInitialSize()
+
+    def Quit(self, e):
+        self.Close()
+
+class MainPanel(wx.Panel):
+    def __init__(self, *args, **kwargs):
+        super(MainPanel, self).__init__(*args, **kwargs)
+
+        zText = wx.StaticText(self, -1, 'PCIE理论值计算工具', (300, 50))
+        font = wx.Font(32, wx.DEFAULT, style=wx.NORMAL, weight=wx.BOLD, underline=False)
+        zText.SetFont(font)
+
+        wx.StaticText(self, -1, '输入参数：\n\n'
+                                'PCIE     : PCIE版本，\n可选值 1.0 | 2.0 | 3.0 | 4.0\n\n'
+                                'Lane     : PCIE Line数，\n可选值： 1~16，\n\n'
+                                'header   : TLP Header长度，\n可选值： 12 | 16，默认：12\n\n'
+                                'RCB      : Read Completion Boundary，\n可选值： 64 | 128，默认：64\n\n'
+                                'MPS      : Maximum Payload Size，\n可选值： 128|256|512|1024|2048|4096，默认：128\n\n'
+                                'ACK      : 接收多个TLP后响应ACK TLP数\n\n'
+                                'FC       : 接收多个TLP后响应FC TLP数\n\n'
+                                'Latency  : 接收端接收到读请求到产生RCB的时间，单位ns', (650, 150))
+
+        mpslist = [ '128', '256', '512', '1024', '2048', '4096']
+        rcblist = ['64', '128']
+        pcielist = ['-请选择版本-', '1.0', '2.0', '3.0', '4.0', '5.0']
+        headlist = ['12', '16']
+        mrrslist = ['128', '256', '512', '1024', '2048', '4096']
+
+        wx.StaticText(self, -1, 'PCIE：', (5, 150))
+        self.pcielistbox = wx.Choice(self, -1, (80, 150), (100, 25), pcielist)       #下拉选择PCIE版本
+        self.pcielistbox.SetSelection(0)
+        self.pcielistbox.Bind(wx.EVT_CHOICE, self.pcie_Play)
+
+        wx.StaticText(self, -1, 'Header：', (5, 200))              #用静态文本标识参数名
+        self.headlistbox = wx.Choice(self, -1, (80, 200), (100, 25), headlist)
+        self.headlistbox.SetSelection(0)
+        self.head = 12
+        self.headlistbox.Bind(wx.EVT_CHOICE, self.head_Play)
+
+        wx.StaticText(self, -1, 'Lane：', (5, 250))
+        wx.StaticText(self, -1, '(可选值： 1~16，例如：1)', (50, 273))
+        self.lane = wx.TextCtrl(self, pos=(80, 250), size=(100, 25))           #输入lane的数值
+
+        wx.StaticText(self, -1, 'MPS：', (5, 300))
+        self.mpslistbox = wx.Choice(self, -1, (80, 300), (100, 25), mpslist)       #下拉框选择mps
+        self.mpslistbox.SetSelection(0)
+        self.mps = 128                                     #设置mps默认值
+        self.mpslistbox.Bind(wx.EVT_CHOICE, self.mps_Play)
+
+        wx.StaticText(self, -1, 'ACK：', (5, 350))
+        #wx.StaticText(self, -1, '接收多个TLP后响应ACK TLP数，\n默认：5', (5, 300))
+        self.ack = wx.TextCtrl(self, pos=(80, 350), size=(100, 25))
+
+        wx.StaticText(self, -1, 'FC：', (250, 200))
+        #wx.StaticText(self, -1, '接收多个TLP后响应FC TLP数，\n默认：4', (5, 350))
+        self.fc = wx.TextCtrl(self, pos=(320, 200), size=(100, 25))
+
+        wx.StaticText(self, -1, 'RCB：', (250, 250))
+        self.rcblistbox = wx.Choice(self, -1, (320, 250), (100, 25), rcblist)         #下拉选择rcb
+        self.rcblistbox.SetSelection(0)
+        self.rcb = 64                                   #设置rcb默认值
+        self.rcblistbox.Bind(wx.EVT_CHOICE, self.rcb_Play)
+
+        wx.StaticText(self, -1, 'MRRS：', (250, 300))
+        self.mrrslistbox = wx.Choice(self, -1, (320, 300), (100, 25), mrrslist)       #下拉框选择mrrs
+        self.mrrslistbox.SetSelection(0)
+        self.mrrs = 128                                #设置mrrs默认值
+        self.mrrslistbox.Bind(wx.EVT_CHOICE, self.mrrs_Play)
+
+        wx.StaticText(self, -1, 'Latency：', (250, 350))
+        self.latency = wx.TextCtrl(self, pos=(320, 350), size=(100, 25))
+
+        self.buttonw = wx.Button(self, -1, 'Write', pos=(480, 230))           #读写选择按钮
+        self.Bind(wx.EVT_BUTTON, self.wButton, self.buttonw)
+        self.buttonr = wx.Button(self, -1, 'Read', pos=(480, 290))
+        self.Bind(wx.EVT_BUTTON, self.rButton, self.buttonr)
+
+        wText = wx.StaticText(self, -1, 'PCIE操作吞吐量（单位：Gbps）', (80, 420))
+        font = wx.Font(16, wx.DEFAULT, style=wx.NORMAL, weight=wx.BOLD, underline=False)
+        wText.SetFont(font)
+        wText.SetBackgroundColour('green')
+        wx.StaticText(self, -1, '基于处理延时分析：', (160, 460))
+        self.yText = wx.TextCtrl(self, pos=(180, 490), size=(100, 25))
+        wx.StaticText(self, -1, '基于通道利用率：', (160, 520))
+        self.tText = wx.TextCtrl(self, pos=(180, 550), size=(100, 25))
+        #AddText.SetBackgroundColour('black')
+        #AddText.SetForegroundColour('white')
+
+        self.Show(True)
+
+    def mps_Play(self, event):
+        self.mps = self.mpslistbox.GetStringSelection()
+
+    def rcb_Play(self, event):
+        self.rcb = self.rcblistbox.GetStringSelection()
+
+    def head_Play(self, event):
+        self.head = self.headlistbox.GetStringSelection()
+
+    def mrrs_Play(self, event):
+        self.mrrs = self.mrrslistbox.GetStringSelection()
+
+    def pcie_Play(self, event):
+        self.pcie = self.pcielistbox.GetStringSelection()
+
+    def wButton(self, event):
+
+        if self.pcie == "1.0" and self.head == 12:
+
+            tput_by_latency = round((float(self.mps) * 2.5 * 0.8 / ((float(self.mps) + 24) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 24) * (2.5 * 0.8) *
+                     float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))           #基于通道利用率
+
+        if self.pcie == '2.0'and self.head == 12:
+
+            tput_by_latency = round((float(self.mps) * 5.0 * 0.8 / ((float(self.mps) + 24) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 24) * (5.0 * 0.8) *
+                     float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))           #基于通道利用率
+
+        if self.pcie == '3.0'and self.head == 12:
+
+            tput_by_latency = round((float(self.mps) * 8.0 * 0.8 / ((float(self.mps) + 26) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 26) * (8.0 * 0.8) *
+                     float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))           #基于通道利用率
+
+        if self.pcie == '4.0'and self.head == 12:
+
+            tput_by_latency = round((float(self.mps) * 16.0 * 0.8 / ((float(self.mps) + 26) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 26) * (16.0 * 0.8) *
+                     float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))           #基于通道利用率
+
+        if self.pcie == '5.0'and self.head == 12:
+
+            tput_by_latency = round((float(self.mps) * 32.0 * 0.8 / ((float(self.mps) + 26) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 26) * (32.0 * 0.8) *
+                     float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))           #基于通道利用率
+
+        if self.pcie == '1.0' and self.head == "16":
+            tput_by_latency = round((float(self.mps) * 2.5 * 0.8 / ((float(self.mps) + 28) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 28) * (2.5 * 0.8) *
+                         float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))  # 基于通道利用率
+
+        if self.pcie == '2.0' and self.head == "16":
+            tput_by_latency = round((float(self.mps) * 5.0 * 0.8 / ((float(self.mps) + 28) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 28) * (5.0 * 0.8) *
+                         float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))  # 基于通道利用率
+
+        if self.pcie == '3.0' and self.head == "16":
+            tput_by_latency = round((float(self.mps) * 8.0 * 0.8 / ((float(self.mps) + 30) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 30) * (8.0 * 0.8) *
+                         float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))  # 基于通道利用率
+
+        if self.pcie == '4.0' and self.head == "16":
+            tput_by_latency = round((float(self.mps) * 16.0 * 0.8 / ((float(self.mps) + 30) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 30) * (16.0 * 0.8) *
+                         float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))  # 基于通道利用率
+
+        if self.pcie == '5.0' and self.head == "16":
+            tput_by_latency = round((float(self.mps) * 32.0 * 0.8 / ((float(self.mps) + 30) /
+                                                                    float(self.lane.GetValue()) + 1 / float(
+                        self.ack.GetValue()) + 1 / float(self.fc.GetValue()))), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 基于处理延时分析
+
+            tput = round(1.0 * float(self.mps) / (float(self.mps) + 30) * (32.0 * 0.8) *
+                         float(self.lane.GetValue()), 3)
+            self.tText.SetValue(str(tput))  # 基于通道利用率
+
+    def rButton(self, event):
+        if self.pcie == '1.0' and self.head == 12:
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 24 / float(self.lane.GetValue()) + 1.0 * (1 + float(self.mrrs) /
+                                                                          float(self.rcb) * (1.0 / float(self.ack.GetValue()) + 1.0 / float(self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                                                                (float(self.rcb) + 24) / (float(self.rcb) * float(self.lane.GetValue())))) * 8.0
+                                                                         / (2.5 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))                 #读操作基于延时处理分析
+            self.tText.Clear()                                        #读操作基于通道利用率文本框清空
+
+        if self.pcie == '2.0' and self.head == 12:
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 24 / float(self.lane.GetValue()) + 1.0 * (1 + float(self.mrrs) /
+                                                                          float(self.rcb) * (1.0 / float(self.ack.GetValue()) + 1.0 / float(self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                                                                (float(self.rcb) + 24) / (float(self.rcb) * float(self.lane.GetValue())))) * 8.0
+                                                                         / (5.0 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))                 #读操作基于延时处理分析
+            self.tText.Clear()                                        #读操作基于通道利用率文本框清空
+
+        if self.pcie == '3.0' and self.head == 12:
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 26 / float(self.lane.GetValue()) + 1.0 * (1 + float(self.mrrs) /
+                                                                          float(self.rcb) * (1.0 / float(self.ack.GetValue()) + 1.0 / float(self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                                                                (float(self.rcb) + 26) / (float(self.rcb) * float(self.lane.GetValue())))) * 8.0
+                                                                         / (8.0 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))                 #读操作基于延时处理分析
+            self.tText.Clear()                                        #读操作基于通道利用率文本框清空
+
+        if self.pcie == '4.0' and self.head == 12:
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 26 / float(self.lane.GetValue()) + 1.0 * (1 + float(self.mrrs) /
+                                                                          float(self.rcb) * (1.0 / float(self.ack.GetValue()) + 1.0 / float(self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                                                                (float(self.rcb) + 26) / (float(self.rcb) * float(self.lane.GetValue())))) * 8.0
+                                                                         / (16.0 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))                 #读操作基于延时处理分析
+            self.tText.Clear()                                        #读操作基于通道利用率文本框清空
+
+        if self.pcie == '5.0' and self.head == 12:
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 26 / float(self.lane.GetValue()) + 1.0 * (1 + float(self.mrrs) /
+                                                                          float(self.rcb) * (1.0 / float(self.ack.GetValue()) + 1.0 / float(self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                                                                (float(self.rcb) + 26) / (float(self.rcb) * float(self.lane.GetValue())))) * 8.0
+                                                                         / (32.0 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))                 #读操作基于延时处理分析
+            self.tText.Clear()                                        #读操作基于通道利用率文本框清空
+
+        if self.pcie == '1.0' and self.head == "16":
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 28 / float(self.lane.GetValue()) + 1.0 * (1 + float (self.mrrs)/
+                                       float(self.rcb) * (1.0 / float (self.ack.GetValue()) + 1.0 / float(
+                                       self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                       (float(self.rcb) + 28) / (float(self.rcb) * float(
+                                        self.lane.GetValue())))) * 8.0 / (2.5 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 读操作基于延时处理分析
+            self.tText.Clear()  # 读操作基于通道利用率文本框清空
+
+        if self.pcie == '2.0' and self.head == "16":
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 28 / float(self.lane.GetValue()) + 1.0 * (1 + float (self.mrrs)/
+                                       float(self.rcb) * (1.0 / float (self.ack.GetValue()) + 1.0 / float(
+                                       self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                       (float(self.rcb) + 28) / (float(self.rcb) * float(
+                                        self.lane.GetValue())))) * 8.0 / (5.0 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 读操作基于延时处理分析
+            self.tText.Clear()  # 读操作基于通道利用率文本框清空
+
+        if self.pcie == '3.0' and self.head == "16":
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 30 / float(self.lane.GetValue()) + 1.0 * (1 + float (self.mrrs)/
+                                       float(self.rcb) * (1.0 / float (self.ack.GetValue()) + 1.0 / float(
+                                       self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                       (float(self.rcb) + 30) / (float(self.rcb) * float(
+                                        self.lane.GetValue())))) * 8.0 / (8.0 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 读操作基于延时处理分析
+            self.tText.Clear()  # 读操作基于通道利用率文本框清空
+
+        if self.pcie == '4.0' and self.head == "16":
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 30 / float(self.lane.GetValue()) + 1.0 * (1 + float (self.mrrs)/
+                                       float(self.rcb) * (1.0 / float (self.ack.GetValue()) + 1.0 / float(
+                                       self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                       (float(self.rcb) + 30) / (float(self.rcb) * float(
+                                        self.lane.GetValue())))) * 8.0 / (16.0 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 读操作基于延时处理分析
+            self.tText.Clear()  # 读操作基于通道利用率文本框清空
+
+        if self.pcie == '5.0' and self.head == "16":
+            tput_by_latency = round(8.0 * float(self.mrrs) / ((1.0 * 30 / float(self.lane.GetValue()) + 1.0 * (1 + float (self.mrrs)/
+                                       float(self.rcb) * (1.0 / float (self.ack.GetValue()) + 1.0 / float(
+                                       self.fc.GetValue())) + 1.0 * float(self.mrrs) *
+                                       (float(self.rcb) + 30) / (float(self.rcb) * float(
+                                        self.lane.GetValue())))) * 8.0 / (32.0 * 0.8) + float(self.latency.GetValue())), 3)
+            self.yText.SetValue(str(tput_by_latency))  # 读操作基于延时处理分析
+            self.tText.Clear()  # 读操作基于通道利用率文本框清空
+
+
+if __name__ == '__main__':
+    app = ClientGui(False)
+    app.MainLoop()
