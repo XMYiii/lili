@@ -1,0 +1,119 @@
+import cx_Oracle
+import wx
+import wx.grid
+from reg_gui import MyFrame
+
+def GetRegName():
+    connection = cx_Oracle.connect('OT/Orcl123456@szxy2zwx6913991.china.huawei.com/zwx1')
+    sql = """
+                           select * from PIE_TAB
+                           """
+
+    cursor = connection.cursor()
+    cursor.execute(sql)
+
+    data = cursor.fetchall()
+
+    datalist = []
+    for s in data:
+        datalist.append(s[0])
+    # 过滤掉列表中的空值及重复值
+    list0 = list(filter(None, datalist))
+    reg_name = sorted(set(list0), key=list0.index)
+    return reg_name
+
+def GetAddress():
+    connection = cx_Oracle.connect('OT/Orcl123456@szxy2zwx6913991.china.huawei.com/zwx1')
+    sql = """
+                           select * from PIE_TAB
+                           """
+
+    cursor = connection.cursor()
+    cursor.execute(sql)
+
+    data = cursor.fetchall()
+
+    datalist = []
+    for s in data:
+        datalist.append(s[3])
+    # 过滤掉列表中的空值及重复值
+    list0 = list(filter(None, datalist))
+    adress = sorted(set(list0), key=list0.index)
+    return adress
+
+class LineupTable(wx.grid.GridTableBase):
+    connection = cx_Oracle.connect('OT/Orcl123456@szxy2zwx6913991.china.huawei.com/zwx1')
+    sql = """
+                     select * from PIE_TAB
+                     """
+    cursor = connection.cursor()
+    cursor.execute(sql)
+    col = cursor.description
+    colLabels = []
+    for i in range(len(col)):
+        colLabels.append(col[i][0])
+
+    Labels = []
+    for i in range(500):
+        i += 1
+        Labels.append(i)
+    rowLabels = [str(i) for i in Labels]
+
+    def __init__(self):
+        wx.grid.GridTableBase.__init__(self)
+
+        connection = cx_Oracle.connect('OT/Orcl123456@szxy2zwx6913991.china.huawei.com/zwx1')
+        sql = """
+                 select * from PIE_TAB
+                 """
+
+        cursor = connection.cursor()
+        cursor.execute(sql)
+        self.data = cursor.fetchall()
+
+    def GetNumberRows(self):
+
+        return len(self.data)
+
+    def GetNumberCols(self):
+
+        return len(self.data[0])
+
+    def GetColLabelValue(self, col):
+
+        return self.colLabels[col]
+
+    def GetRowLabelValue(self, row):
+        return self.rowLabels[row]
+
+
+    def GetValue(self, row, col):
+
+        return self.data[row][col]
+
+
+    def SetValue(self, row, col, value):
+        pass
+
+
+class TestFrame(wx.Frame):
+    def __init__(self, parent):
+        wx.Frame.__init__(self, parent, -1, "PIE_TAB",size=(1500,1000))
+        grid = wx.grid.Grid(self)
+        table = LineupTable()
+        #table1 = LineupTable1()
+        grid.SetTable(table,True)
+        grid.AutoSize()
+        grid.Refresh()
+        #grid.SetTable(table1, True)
+
+
+if __name__ == "__main__":
+
+    app = wx.App(False)
+    frame = TestFrame(None)
+    frame.Show(True)
+    app.MainLoop()
+
+
+
