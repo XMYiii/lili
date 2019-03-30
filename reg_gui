@@ -1,0 +1,348 @@
+import wx
+import wx.grid
+import PIE_TAB
+import PIE_DIO
+import sqlite3
+import os
+
+# 自定义窗口类MyFrame
+class MyFrame(wx.Frame):
+    def __init__(self):
+        super().__init__(parent=None, title="Reg Query", size=(1800, 1000))
+        self.Center()
+        swindow = wx.SplitterWindow(parent=self, id=-1)
+        left = wx.Panel(parent=swindow)
+        right = wx.Panel(parent=swindow)
+        # 设置左右布局的分割窗口left和right
+        swindow.SplitVertically(left, right, 300)
+        # 设置最小窗格大小，左右布局指左边窗口大小
+        swindow.SetMinimumPaneSize(80)
+
+        # 创建一棵树
+
+        self.tree = self.CreateTreeCtrl(left)
+        self.Bind(wx.EVT_TREE_SEL_CHANGING, self.on_click, self.tree)
+        # 为left面板设置一个布局管理器
+        vbox1 = wx.BoxSizer(wx.VERTICAL)
+        left.SetSizer(vbox1)
+        vbox1.Add(self.tree, 1, flag=wx.EXPAND | wx.ALL, border=5)
+        # 为right面板设置一个布局管理器
+        vbox2 = wx.BoxSizer(wx.VERTICAL)
+        right.SetSizer((vbox2))
+        self.st = wx.StaticText(right, -1, label='查询结果展示区', pos=(250, 10))
+        self.querytext = wx.TextCtrl(self.st, -1, pos=(280, 10), size=(200, 25))
+        self.querytext1 = wx.TextCtrl(right, -1, pos=(283, 15), size=(200, 25))
+
+        self.button = wx.Button(self.st, -1, '开始查询', pos=(500, 10))  # 输入文本查询按钮
+        self.button1 = wx.Button(right, -1, '开始查询', pos=(500, 10))
+        self.Bind(wx.EVT_BUTTON, self.Button, self.button)
+        self.Bind(wx.EVT_BUTTON, self.Button, self.button1)
+
+        self.grid = wx.grid.Grid(right, -1, pos=(10, 100), size=(1300, 1000))
+        self.grid.CreateGrid(100, 10)
+        vbox2.Add(self.st, 1, flag=wx.EXPAND | wx.ALL, border=5)
+
+    def Button(self,event):
+        textdata = self.querytext.GetValue()
+        textdata1 = self.querytext1.GetValue()
+        # 实现PIE_TAB的查询操作
+        self.reg_name = PIE_TAB.GetRegName()
+        self.address = PIE_TAB.GetAddress()
+
+        if textdata in self.reg_name or textdata in self.address or textdata1 in self.reg_name or textdata1 in self.address:
+
+            class LineupTable3(wx.grid.GridTableBase):
+                conn = sqlite3.connect("D:/彩虹屁/PIE_REG.db")
+                cursor = conn.cursor()
+                cursor.execute("select * from PIE_TAB")
+
+                col = cursor.description
+                colLabels = []
+                for i in range(len(col)):
+                    colLabels.append(col[i][0])
+
+                rowLabels = ('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11')
+
+                def __init__(self):
+                    wx.grid.GridTableBase.__init__(self)
+
+                    conn = sqlite3.connect("D:/彩虹屁/PIE_REG.db")
+                    cursor = conn.cursor()
+                    # cursor.execute("select * from PIE_TAB")
+                    cursor.execute("select * from PIE_TAB where (REG_NAME = :reg_name or Address = :id)",
+                                   {'reg_name': textdata, 'id':textdata})
+
+                    self.data = cursor.fetchall()
+                    print(self.data)
+                def GetNumberRows(self):
+                    return len(self.data)
+
+                def GetNumberCols(self):
+                    return len(self.data[0])
+
+                def GetColLabelValue(self, col):
+                    return self.colLabels[col]
+
+                def GetRowLabelValue(self, row):
+                    return self.rowLabels[row]
+
+                def GetValue(self, row, col):
+                    return self.data[row][col]
+
+                def SetValue(self, row, col, value):
+                    pass
+
+            table1 = LineupTable3()
+            self.grid.SetTable(table1, True)
+            self.grid.Refresh()
+
+        # 实现PIE_DIO表的匹配
+        self.reg_name = PIE_DIO.GetRegName()
+        self.address = PIE_DIO.GetAddress()
+        #print(self.address)
+        if textdata in self.reg_name or textdata in self.address or textdata1 in self.reg_name or textdata1 in self.address:
+            class LineupTable4(wx.grid.GridTableBase):
+
+                conn = sqlite3.connect("D:/彩虹屁/PIE_REG.db")
+                cursor = conn.cursor()
+                cursor.execute("select * from PIE_DIO")
+
+                col = cursor.description
+                colLabels = []
+                for i in range(len(col)):
+                    colLabels.append(col[i][0])
+
+                rowLabels = ('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11')
+
+                def __init__(self):
+                    wx.grid.GridTableBase.__init__(self)
+
+                    conn = sqlite3.connect("D:/彩虹屁/PIE_REG.db")
+                    cursor = conn.cursor()
+                    # cursor.execute("select * from PIE_DIO")
+                    #cursor.prepare("select * from PIE_DIO where REG_NAME = :reg_name")
+
+                    cursor.execute("select * from PIE_DIO where (REG_NAME = :reg_name or Address = :id)",
+                                   {'reg_name': textdata,'id':textdata})
+                    self.data = cursor.fetchall()
+                    #print(self.data )
+                def GetNumberRows(self):
+                    return len(self.data)
+
+                def GetNumberCols(self):
+                    return len(self.data[0])
+
+                def GetColLabelValue(self, col):
+                    return self.colLabels[col]
+
+                def GetRowLabelValue(self, row):
+                    return self.rowLabels[row]
+
+                def GetValue(self, row, col):
+                    return self.data[row][col]
+
+                def SetValue(self, row, col, value):
+                    pass
+
+            table1 = LineupTable4()
+            # grid.SetTable(table, True)
+            self.grid.SetTable(table1, True)
+            self.grid.Refresh()
+
+    def on_click(self, event):
+        item = event.GetItem()
+        self.st.SetLabel(self.tree.GetItemText(item))
+        moudle_name=self.tree.GetItemText(item)
+        if moudle_name == 'PIE_DIO':
+            table = PIE_DIO.LineupTable()
+            self.grid.SetTable(table, True)
+            self.grid.Refresh()
+        if moudle_name == 'PIE_TAB':
+            table = PIE_TAB.LineupTable()
+            self.grid.SetTable(table, True)
+            self.grid.Refresh()
+        #实现PIE_TAB的树查询操作
+        self.reg_name = PIE_TAB.GetRegName()
+
+        if moudle_name in self.reg_name :
+
+            class LineupTable1(wx.grid.GridTableBase):
+
+                conn = sqlite3.connect("D:/彩虹屁/PIE_REG.db")
+                cursor = conn.cursor()
+                cursor.execute("select * from PIE_TAB")
+                col = cursor.description
+                colLabels = []
+                for i in range(len(col)):
+                    colLabels.append(col[i][0])
+
+                rowLabels = ('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11')
+
+                def __init__(self):
+                    wx.grid.GridTableBase.__init__(self)
+
+                    conn = sqlite3.connect("D:/彩虹屁/PIE_REG.db")
+                    cursor = conn.cursor()
+                    # cursor.execute("select * from PIE_TAB")
+                    cursor.execute("select * from PIE_TAB where REG_NAME = :reg_name",
+                                   {'reg_name': moudle_name})
+                    self.data = cursor.fetchall()
+
+                def GetNumberRows(self):
+
+                    return len(self.data)
+
+                def GetNumberCols(self):
+
+                    return len(self.data[0])
+
+                def GetColLabelValue(self, col):
+
+                    return self.colLabels[col]
+
+                def GetRowLabelValue(self, row):
+                    return self.rowLabels[row]
+
+                def GetValue(self, row, col):
+
+                    return self.data[row][col]
+
+                def SetValue(self, row, col, value):
+                    pass
+            table1 = LineupTable1()
+
+            self.grid.SetTable(table1, True)
+            self.grid.Refresh()
+
+        #实现PIE_DIO表的匹配
+        self.reg_name = PIE_DIO.GetRegName()
+        if moudle_name in self.reg_name:
+            class LineupTable2(wx.grid.GridTableBase):
+
+                conn = sqlite3.connect("D:/彩虹屁/PIE_REG.db")
+                cursor = conn.cursor()
+                cursor.execute("select * from PIE_DIO")
+                col = cursor.description
+                colLabels = []
+                for i in range(len(col)):
+                    colLabels.append(col[i][0])
+
+                rowLabels = ('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11')
+
+                def __init__(self):
+                    wx.grid.GridTableBase.__init__(self)
+
+                    conn = sqlite3.connect("D:/彩虹屁/PIE_REG.db")
+                    cursor = conn.cursor()
+                    # cursor.execute("select * from PIE_DIO")
+                    cursor.execute("select * from PIE_DIO where REG_NAME = :reg_name",
+                                   {'reg_name': moudle_name})
+                    self.data = cursor.fetchall()
+
+                def GetNumberRows(self):
+                    return len(self.data)
+
+                def GetNumberCols(self):
+                    return len(self.data[0])
+
+                def GetColLabelValue(self, col):
+                    return self.colLabels[col]
+
+                def GetRowLabelValue(self, row):
+                    return self.rowLabels[row]
+
+                def GetValue(self, row, col):
+                    return self.data[row][col]
+
+                def SetValue(self, row, col, value):
+                    pass
+
+            table1 = LineupTable2()
+            self.grid.SetTable(table1, True)
+            self.grid.Refresh()
+
+    def CreateTreeCtrl(self, parent):
+
+        tree = wx.TreeCtrl(parent)
+        # 通过wx.ImageList()创建一个图像列表imglist并保存在树中
+
+        imglist = wx.ImageList(16, 16, True, 2)
+        imglist.Add(wx.ArtProvider.GetBitmap(wx.ART_FOLDER, size=wx.Size(16, 16)))
+        imglist.Add(wx.ArtProvider.GetBitmap(wx.ART_NORMAL_FILE, size=(16, 16)))
+        tree.AssignImageList(imglist)
+        # 创建根节点和5个子节点并展开
+        root = tree.AddRoot('Reg catalog', image=0)
+        item1 = tree.AppendItem(root, 'Chip1', 0)
+        item2 = tree.AppendItem(root, 'Chip2', 0)
+        item3 = tree.AppendItem(root, 'Chip3', 0)
+        item4 = tree.AppendItem(root, 'Chip4', 0)
+        item5 = tree.AppendItem(root, 'Chip5', 0)
+        tree.Expand(root)
+        tree.SelectItem(root)
+
+
+        # 给item1节点添加5个子节点并展开
+        ver1= tree.AppendItem(item1, 'version 1', 0)
+        ver2= tree.AppendItem(item1, 'version 2', 0)
+        ver3= tree.AppendItem(item1, 'version 3', 0)
+        ver4= tree.AppendItem(item1, 'version 4', 0)
+        ver5= tree.AppendItem(item1, 'version 5', 0)
+        tree.Expand(item1)
+
+
+        # 给item2节点添加5个子节点并展开
+        tree.AppendItem(item2, 'version1', 1)
+        tree.AppendItem(item2, 'version 2', 1)
+        tree.AppendItem(item2, 'version 3', 1)
+
+        tree.Expand(item2)
+
+        #给ver1节点添加2个子节点
+        reg1=tree.AppendItem(ver1,'PIE',0)
+        reg2 = tree.AppendItem(ver1, 'SPI', 0)
+        tree.Expand(ver1)
+
+
+        #给reg1节点添加两个子节点
+        PIE_DIO1= tree.AppendItem(reg1, 'PIE_DIO', 1)
+        PIE_TAB1= tree.AppendItem(reg1, 'PIE_TAB', 1)
+        tree.Expand(reg1)
+        #tree.Expand(reg1)
+
+        # 给reg2节点添加两1个子节点
+        tree.AppendItem(reg2, 'SPI1', 1)
+        #tree.AppendItem(item2, 'PIE_TAB', 1)
+        #print(PIE_TAB.GetRegName())
+        #print(PIE_TAB.GetRegName())
+        self.reg_name= PIE_TAB.GetRegName()
+        #print(self.reg_name)
+        for self.regname in self.reg_name:
+            #print(regname)
+            tree.AppendItem(PIE_TAB1, self.regname, 1)
+
+        PIE_DIO_reg_name = PIE_DIO.GetRegName()
+        for regname in PIE_DIO_reg_name:
+            #print(regname)
+            tree.AppendItem(PIE_DIO1, regname, 1)
+
+
+
+        # 返回树对象
+        return tree
+
+
+class App(wx.App):
+    def OnInit(self):
+        # 创建窗口对象
+        frame = MyFrame()
+        frame.Show()
+        return True
+
+    def OnExit(self):
+        print("应用程序退出")
+        return 0
+
+
+if __name__ == '__main__':
+    app = App()
+    app.MainLoop()
