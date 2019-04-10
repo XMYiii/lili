@@ -1,0 +1,26 @@
+import sys
+from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow, QDialog
+
+from pcie_help import *
+from CallFirstMainWin import *
+
+class childWindow(QDialog):
+    def __init__(self):
+        QDialog.__init__(self)
+        self.child = Ui_Dialog()
+        self.child.setupUi(self)
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    #app = QApplication(sys.argv)，每一个pyqt程序必须创建一个application对象，
+    #sys.argv是命令行参数，可以通过命令启动的时候传递参数。
+    window = MainWindow()
+    child = childWindow()
+    window.show()  # 用来显示窗口
+
+    #生成过一个实例（对象）, mainWindow是实例（对象）的名字，可以随便起。
+    window.Help.triggered.connect(child.show)    # 帮助信息获取
+
+    sys.exit(app.exec_())#exec_()方法的作用是“进入程序的主循环直到exit()被调
