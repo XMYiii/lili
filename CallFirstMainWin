@@ -1,0 +1,200 @@
+import sys
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtWidgets import QApplication, QMainWindow, QPlainTextEdit, QComboBox, QDialog
+from pcie_ui import *
+import cgitb
+
+cgitb.enable(format= 'text')
+
+# 剥离UI和逻辑
+class MainWindow(QMainWindow, Ui_PCIE):
+    def __init__(self, parent=None):
+        super(MainWindow, self).__init__(parent)
+        self.setupUi(self)
+
+        self.wButton.clicked.connect(self.onWrite)
+        self.rButton.clicked.connect(self.onRead)
+
+    # Write按钮的操作
+    def onWrite(self):
+        pcie = self.pcie.currentText()
+        head = self.head.currentText()
+        mps = self.mps.currentText()
+        lane = self.lane.toPlainText()
+        ack = self.ack.toPlainText()
+        fc = self.fc.toPlainText()
+        rcb = self.rcb.currentText()
+        mrrs = self.mrrs.currentText()
+        latency = self.latency.toPlainText()
+
+        # print(pcie, head, mps, lane, ack, fc, rcb, mrrs, latency)
+        self.yText.clear()
+        self.tText.clear()
+        if pcie == '1.0' and head == '12':
+            # 芯片处理延时分析
+            tput_by_latency = round((float(mps) * 2.5 * 0.8 / ((float(mps) + 24) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            print( tput_by_latency)
+            self.yText.setPlainText(str(tput_by_latency))
+            # 通道利用率分析
+            tput = round(1.0 * float(mps) / (float(mps) + 24) * (2.5 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+        if pcie == '2.0' and head == '12':
+            tput_by_latency = round((float(mps) * 5.0 * 0.8 / ((float(mps) + 24) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            print(tput_by_latency)
+            self.yText.setPlainText(str(tput_by_latency))
+            tput = round(1.0 * float(mps) / (float(mps) + 24) * (5.0 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+        if pcie == '3.0' and head == '12':
+            tput_by_latency = round((float(mps) * 8.0 * 0.8 / ((float(mps) + 26) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+            tput = round(1.0 * float(mps) / (float(mps) + 26) * (8.0 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+        if pcie == '4.0' and head == '12':
+            tput_by_latency = round((float(mps) * 16.0 * 0.8 / ((float(mps) + 26) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+            tput = round(1.0 * float(mps) / (float(mps) + 26) * (16.0 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+        if pcie == '5.0' and head == '12':
+            tput_by_latency = round((float(mps) * 32.0 * 0.8 / ((float(mps) + 26) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+            tput = round(1.0 * float(mps) / (float(mps) + 26) * (32.0 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+        if pcie == '1.0' and head == "16":
+            tput_by_latency = round((float(mps) * 2.5 * 0.8 / ((float(mps) + 28) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+            tput = round(1.0 * float(mps) / (float(mps) + 28) * (2.5 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+        if pcie == '2.0' and head == "16":
+            tput_by_latency = round((float(mps) * 5.0 * 0.8 / ((float(mps) + 28) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+            tput = round(1.0 * float(mps) / (float(mps) + 28) * (5.0 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+        if pcie == '3.0' and head == "16":
+            tput_by_latency = round((float(mps) * 8.0 * 0.8 / ((float(mps) + 30) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+            tput = round(1.0 * float(mps) / (float(mps) + 30) * (8.0 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+        if pcie == '4.0' and head == "16":
+            tput_by_latency = round((float(mps) * 16.0 * 0.8 / ((float(mps) + 30) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+            tput = round(1.0 * float(mps) / (float(mps) + 30) * (16.0 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+        if pcie == '5.0' and head == "16":
+            tput_by_latency = round((float(mps) * 32.0 * 0.8 / ((float(mps) + 30) /
+                                    float(lane) + 1 / float(ack) + 1 / float(fc))), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+            tput = round(1.0 * float(mps) / (float(mps) + 30) * (32.0 * 0.8) * float(lane), 3)
+            self.tText.setPlainText(str(tput))
+
+    # Read按钮操作
+    def onRead(self):
+        pcie = self.pcie.currentText()
+        head = self.head.currentText()
+        mps = self.mps.currentText()
+        lane = self.lane.toPlainText()
+        ack = self.ack.toPlainText()
+        fc = self.fc.toPlainText()
+        rcb = self.rcb.currentText()
+        mrrs = self.mrrs.currentText()
+        latency = self.latency.toPlainText()
+
+        self.yText.clear()
+        if pcie == '1.0' and head == '12':
+            # 芯片延时处理分析
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 24 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 24)
+                / (float(rcb) *float(lane)))) * 8.0 / (2.5 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+            # 通道利用率文本框清空
+            # self.tText.Clear()
+            print(tput_by_latency)
+
+        if pcie == '2.0' and head == '12':
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 24 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 24)
+                / (float(rcb) * float(lane)))) * 8.0 / (5.0 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+        if pcie == '3.0' and head == '12':
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 26 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 26)
+                / (float(rcb) *  float(lane)))) * 8.0 / (8.0 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+        if pcie == '4.0' and head == '12':
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 26 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 26)
+                / (float(rcb) * float(lane)))) * 8.0 / (16.0 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+        if pcie == '5.0' and head == '12':
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 26 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 26)
+                / (float(rcb) * float(lane)))) * 8.0 / (32.0 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+        if pcie == '1.0' and head == "16":
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 28 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 28)
+                / (float(rcb) * float(lane)))) * 8.0 / (2.5 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+        if pcie == '2.0' and head == "16":
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 28 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 28)
+                / (float(rcb) * float(lane)))) * 8.0 / (5.0 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+        if pcie == '3.0' and head == "16":
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 30 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 30)
+                / (float(rcb) * float(lane)))) * 8.0 / (8.0 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+        if pcie == '4.0' and head == "16":
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 30 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 30)
+                / (float(rcb) * float(lane)))) * 8.0 / (16.0 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
+
+        if pcie == '5.0' and head == "16":
+            tput_by_latency = round(
+                8.0 * float(mrrs) / ((1.0 * 30 / float(lane) + 1.0 * (1 + float
+                (mrrs) / float(rcb) * (1.0 / float(ack) + 1.0 / float(fc)) + 1.0 * float(mrrs) * (float(rcb) + 30)
+                / (float(rcb) * float(lane)))) * 8.0 / (32.0 * 0.8) + float(latency)), 3)
+            self.yText.setPlainText(str(tput_by_latency))
