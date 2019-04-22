@@ -1,0 +1,670 @@
+# -*- coding: utf-8 -*-
+import xlrd
+import xlwt
+import sys
+import os
+import pymysql
+
+# ---------------------------------------------------------------------------------
+# 函数名称：load_register
+# 函数功能：从EXCEL文件中导入寄存器
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def load_register(chip,version,filename):
+
+    db = pymysql.connect(host='10.93.168.132', port=3306, user='root', password='admin', database='chip',charset='utf8')
+    cursor = db.cursor()
+    key_reg   = get_sql_statement("", "key_tbl_reg")
+    key_field = get_sql_statement("", "key_tbl_field")
+    sql_statement_reg = []
+    sql_statement_field = []
+    last_reg_name = ""
+
+    # 打开EXCEL文件
+    workbook = xlrd.open_workbook(filename,encoding_override='utf-8')
+    # 获取所有的SHEET
+    sheets_list = workbook.sheet_names()
+
+    dict_reg_var = get_reg_var(workbook,sheets_list)
+
+
+    # 逐个模块进行处理
+    for sheetname in sheets_list:
+
+        sheet = workbook.sheet_by_name(sheetname)
+        print("    sheet = " + str(sheetname))
+        # 判断SHEET表单是否为有效寄存器表单，判断条件： A1="Module Name"
+        if ("Module Name" == str(sheet.cell_value(0,0))) or ("模块名" == str(sheet.cell_value(0,0))):
+            is_reg_sheet = 1
+        else:
+            is_reg_sheet = 0
+        glb_reg_name = ""
+
+        # 如果是有效寄存器表单则逐行处理
+        if 1 == is_reg_sheet:
+            nrows = sheet.nrows
+
+            # 获得模块名称
+            module_name = sheet.cell_value(0,1)
+            # 打印模块名称
+            print("    module = " + str(module_name))
+
+            # 去除模块名称中的_DIO和_TAB的后缀，用于后续寄存器名称的刷新
+            key_module_name = module_name.upper().replace("_DIO","").replace("_TAB","")
+
+            # 删除chip数据库中reg表格中对应”芯片+版本+模块“的记录
+            sql_delete_record_reg = "delete from reg where " + \
+                                "chip='" + str(chip) + "' and " + \
+                                "version='" + str(version) + "' and " + \
+                                "module='" + str(module_name) + "'"
+            #print(sql_delete_record_reg)
+            cursor.execute(sql_delete_record_reg)
+            db.commit()
+
+            # 删除chip数据库中reg_field表格中对应”芯片+版本+模块“的记录
+            sql_delete_record_field = "delete from reg_field where " + \
+                                "chip='" + str(chip) + "' and " + \
+                                "version='" + str(version) + "' and " + \
+                                "module='" + str(module_name) + "'"
+            #print(sql_delete_record_field)
+            cursor.execute(sql_delete_record_field)
+            db.commit()
+
+            # 获得模块基地址
+            base_address = sheet.cell_value(2,1)
+
+            # 使用数组存储各行数据
+            rownum = 6
+            # 以字典（哈希）的方式存储每行数据
+            list_filed = {}
+            while (rownum <= nrows - 1):
+                # 获得一行各单元格的数据，在读取的过程中做一些格式预处理
+                reg_name  = str(sheet.cell_value(rownum,0)).replace(" ", "")
+                reg_desc  = str(sheet.cell_value(rownum,1)).replace("\'","\\'")
+                reg_crsv  = str(sheet.cell_value(rownum,2)).replace(" ", "")
+                reg_addr  = str(sheet.cell_value(rownum,3)).replace(" ", "")
+                reg_width = str(sheet.cell_value(rownum,4)).replace(" ", "").replace(".0","")
+                reg_lenth = str(sheet.cell_value(rownum,5)).replace(" ", "").replace(".0","")
+                reg_attr  = str(sheet.cell_value(rownum,6)).replace(" ", "")
+                reg_defv  = str(sheet.cell_value(rownum,7)).replace(" ", "")
+                reg_irsv  = str(sheet.cell_value(rownum,8)).replace(" ", "")
+                field_name  = str(sheet.cell_value(rownum,9)).replace(" ", "")
+                field_range = str(sheet.cell_value(rownum,10)).replace(" ", "").replace(".0","")
+                field_attr  = str(sheet.cell_value(rownum,11))
+                field_defv  = str(sheet.cell_value(rownum,12))
+                field_nrsd  = str(sheet.cell_value(rownum,13))
+                field_desc  = str(sheet.cell_value(rownum,14)).replace("'","\'")
+                field_prsv  = str(sheet.cell_value(rownum,15))
+                field_qrsv  = str(sheet.cell_value(rownum,16))
+
+                # 通过判断 寄存器名称 和 寄存器地址 是否为空来区分寄存器
+                if ("" != reg_name and "" != reg_addr):
+                    print("        register = " + str(reg_name))
+                    # 跳过寄存器名称为RESERVED的寄存器
+                    if "RESERVED" != reg_name.upper():
+                        # 基于模块的基地址（可能存在多个）和寄存器地址（存在a+b*c+d*e等情况）信息细化拆分成具体的地址
+
+                        array_reg_addr = get_reg_addr(dict_reg_var, base_address, reg_addr)
+
+                        # 判断寄存器名称是否以模块名称开始，若不是则在寄存器名称前添加模块名
+                        if 0 != reg_name.find(key_module_name):
+                            glb_reg_name = str(key_module_name) + "_" + str(reg_name)
+                        else:
+                            glb_reg_name = reg_name
+                        # 将寄存器信息存储到哈希变量中
+                        list_filed = {}
+                        list_filed['chip'] = chip
+                        list_filed['version'] = version
+                        list_filed['module'] = module_name
+                        list_filed['reg_name'] = reg_name
+                        list_filed['reg_desc'] = reg_desc
+                        list_filed['reg_crsv'] = reg_crsv
+                        list_filed['reg_addr'] = reg_addr
+                        list_filed['reg_width'] = reg_width
+                        list_filed['reg_lenth'] = reg_lenth
+                        list_filed['reg_attr'] = reg_attr
+                        list_filed['reg_defv'] = reg_defv
+                        list_filed['reg_irsv'] = reg_irsv
+                        list_filed['field_name'] = field_name
+                        list_filed['field_range'] = field_range
+                        list_filed['field_attr'] = field_attr
+                        list_filed['field_defv'] = field_defv
+                        list_filed['field_nrsd'] = field_nrsd
+                        list_filed['field_desc'] = field_desc
+                        list_filed['field_prsv'] = field_prsv
+                        list_filed['field_qrsv'] = field_qrsv
+                        # 向chip.reg表格中写入上一次寄存器的信息
+                        if 0 != len(sql_statement_reg):
+                            cursor.executemany(key_reg, sql_statement_reg)
+                            db.commit()
+                        # 向chip.reg表格中写入上一次寄存器域的信息
+                        if 0 != len(sql_statement_field):
+                            cursor.executemany(key_field, sql_statement_field)
+                            db.commit()
+                        # 将临时变量清空
+                        del sql_statement_reg[:]
+                        del sql_statement_field[:]
+                        sql_statement_reg = []
+                        sql_statement_field = []
+                # 通过判断 寄存器域名称 和 寄存器域范围 是否为空 来判断是否为有效行
+                if ("" != field_name and "" != field_range) and ("RESERVED" != reg_name.upper()):
+
+                    # 若寄存器为非则继续后续的处理，目的适配寄存器表单异常的情况：表单首行寄存器名称或寄存器地址为空的情况
+                    if "" != glb_reg_name:
+                        list_filed['field_name'] = field_name
+                        list_filed['field_range'] = field_range
+                        list_filed['field_attr'] = field_attr
+                        list_filed['field_defv'] = field_defv
+                        list_filed['field_nrsd'] = field_nrsd
+                        list_filed['field_desc'] = field_desc
+                        list_filed['field_prsv'] = field_prsv
+                        list_filed['field_qrsv'] = field_qrsv
+                        # 基于拆分后的寄存器地址进行处理，每个地址对应一个寄存器
+
+                        for m in range(0, len(array_reg_addr)):
+                            # 获得每个寄存器的地址和后缀信息
+                            tmp_base_addr = str(array_reg_addr[m]).split("=")
+                            # 寄存器后缀信息，后缀信息的来源为base_address
+                            tmp_base_name = tmp_base_addr[1]
+                            # 寄存器地址信息
+                            tmp_base_addr = tmp_base_addr[0]
+
+                            # 判断寄存器后缀信息中是否包含下划线，如果包含了则将之添加到原始寄存器名称后面
+                            if -1 != tmp_base_name.find("_"):
+                                tmp_glb_reg_name = str(glb_reg_name) + str(tmp_base_name)
+                            else:
+                                tmp_glb_reg_name = str(glb_reg_name)
+
+                            # 通过拆分后寄存器地址数组的个数来判断原始寄存器是否被复制成多个寄存器，若有复制则在寄存器后添加后缀，后缀格式为_m，其中m=0,1,2,...
+                            if 1 < len(array_reg_addr):
+                                tmp_base_name = "_" + str(m)
+                                tmp_glb_reg_name = str(glb_reg_name) + str(tmp_base_name)
+
+                            # 刷新寄存器的名称和地址
+                            list_filed['reg_name'] = tmp_glb_reg_name
+                            list_filed['reg_addr'] = tmp_base_addr
+
+                            if str(last_reg_name) != str(tmp_glb_reg_name):
+                                # 整理得到待向chip.reg表格插入的数据格式
+                                if "" != str(sheet.cell_value(rownum, 0)):
+                                    tmp_sql_statement_reg = get_sql_statement(list_filed, "value_tbl_reg")
+                                    # 使用数据库存储待向chip.reg表格插入的数据
+                                    sql_statement_reg.append(tmp_sql_statement_reg)
+                                    last_reg_name = tmp_glb_reg_name
+
+                            # 整理得到待向chip.reg_field表格插入的数据格式
+                            tmp_sql_statement_field = get_sql_statement(list_filed,"value_tbl_field")
+                            # 使用数据库存储待向chip.reg_field表格插入的数据
+                            sql_statement_field.append(tmp_sql_statement_field)
+
+                rownum = rownum + 1
+
+    # 对最后一条寄存器进行插入操作
+    if 0 != len(sql_statement_reg):
+        cursor.executemany(key_reg, sql_statement_reg)
+        db.commit()
+
+    if 0 != len(sql_statement_field):
+        cursor.executemany(key_field, sql_statement_field)
+        db.commit()
+
+    # 释放临时变量的占用的资源
+    del sql_statement_reg[:]
+    del sql_statement_field[:]
+
+    cursor.close()
+    db.close()
+
+
+# ---------------------------------------------------------------------------------
+# 函数名称：get_sql_statement
+# 函数功能：根据输入信息生成部分SQL语句信息
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def get_sql_statement(list_reg_field,opcode):
+
+    if "" != list_reg_field:
+        chip = list_reg_field['chip']
+        version = list_reg_field['version']
+        module = list_reg_field['module']
+        reg_name = list_reg_field['reg_name']
+        reg_desc = list_reg_field['reg_desc']
+        reg_crsv = list_reg_field['reg_crsv']
+        reg_addr = list_reg_field['reg_addr']
+        reg_width = list_reg_field['reg_width']
+        reg_lenth = list_reg_field['reg_lenth']
+        reg_attr = list_reg_field['reg_attr']
+        reg_defv = list_reg_field['reg_defv']
+        reg_irsv = list_reg_field['reg_irsv']
+        field_name = list_reg_field['field_name']
+        field_range = list_reg_field['field_range']
+        field_attr = list_reg_field['field_attr']
+        field_defv = list_reg_field['field_defv']
+        field_nrsd = list_reg_field['field_nrsd']
+        field_desc = list_reg_field['field_desc']
+        field_prsv = list_reg_field['field_prsv']
+        field_qrsv = list_reg_field['field_qrsv']
+
+
+        # 以数组的格式生成向chip.reg表格插入的数据
+        value_tbl_reg = []
+        value_tbl_reg.append(str(chip))
+        value_tbl_reg.append(str(version))
+        value_tbl_reg.append(str(module))
+        value_tbl_reg.append(str(reg_name))
+        value_tbl_reg.append(str(reg_desc))
+        value_tbl_reg.append(str(reg_crsv))
+        value_tbl_reg.append(str(reg_addr))
+        value_tbl_reg.append(str(reg_width))
+        value_tbl_reg.append(str(reg_lenth))
+        value_tbl_reg.append(str(reg_attr))
+        value_tbl_reg.append(str(reg_defv))
+        value_tbl_reg.append(str(reg_irsv))
+
+        # 以数组的格式生成向chip.reg_field表格插入的数据
+        value_tbl_field = []
+        value_tbl_field.append(str(chip))
+        value_tbl_field.append(str(version))
+        value_tbl_field.append(str(module))
+        value_tbl_field.append(str(reg_name))
+        value_tbl_field.append(str(reg_desc))
+        value_tbl_field.append(str(reg_crsv))
+        value_tbl_field.append(str(reg_addr))
+        value_tbl_field.append(str(reg_width))
+        value_tbl_field.append(str(reg_lenth))
+        value_tbl_field.append(str(reg_attr))
+        value_tbl_field.append(str(reg_defv))
+        value_tbl_field.append(str(reg_irsv))
+        value_tbl_field.append(str(field_name))
+        value_tbl_field.append(str(field_range))
+        value_tbl_field.append(str(field_attr))
+        value_tbl_field.append(str(field_defv))
+        value_tbl_field.append(str(field_nrsd))
+        value_tbl_field.append(str(field_desc))
+        value_tbl_field.append(str(field_prsv))
+        value_tbl_field.append(str(field_qrsv))
+
+    # 生成chip.reg表格插入数据的部分SQL语句
+    key_tbl_reg = "INSERT INTO reg (" \
+                  "chip,version,module,reg_name,reg_desc,reg_crsv,reg_addr,reg_width,reg_length,reg_attr,reg_defv,reg_irsv" \
+                  ") VALUES(" \
+                  "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s" \
+                  ")"
+
+    # 生成chip.reg_field表格插入数据的部分SQL语句
+    key_tbl_field = "INSERT INTO reg_field (" \
+                    "chip,version,module,reg_name,reg_desc,reg_crsv,reg_addr,reg_width,reg_length,reg_attr,reg_defv,reg_irsv," \
+                    "field_name,field_range,field_attr,field_defv,field_nrsv,field_desc,field_prsv,field_qrsv" \
+                    ") VALUES (" \
+                    "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s," \
+                    "%s,%s,%s,%s,%s,%s,%s,%s" \
+                    ")"
+
+
+    if opcode == "key_tbl_reg":
+        return key_tbl_reg
+    elif opcode == "value_tbl_reg":
+        return value_tbl_reg
+    elif opcode == "key_tbl_field":
+        return key_tbl_field
+    elif opcode == "value_tbl_field":
+        return value_tbl_field
+
+# ---------------------------------------------------------------------------------
+# 函数名称：get_reg_addr
+# 函数功能：根据base_address和reg_addr计算寄存器地址，若对应多个地址需要拆分
+# 函数输入：
+# 函数输出：寄存器地址数组，每个元素的格式式为 address=name
+#         其中：address为地址，name为子模块名称（默认为NONE）
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def get_reg_addr(dict_reg_var,base_address,reg_addr):
+    return_address = []
+    # 基于base_address获得base_address列表，实现模块寄存器的拆分
+    array_address_base = get_reg_addr_value(dict_reg_var, base_address)
+
+    # 基于reg_addr获得offset_address列表，实现单个寄存器的拆分
+    array_address_offset = get_reg_addr_value(dict_reg_var, reg_addr)
+
+    # 实现模块地址的拆分
+    for i in range(0, len(array_address_base)):
+        # 获得拆分后的子模块名称和对应的寄存器基址
+        tmp_base_addr = str(array_address_base[i]).split("=")
+
+        tmp_base_name = tmp_base_addr[1]
+        tmp_base_addr = tmp_base_addr[0]
+
+        # 实现寄存器地址的拆分
+        for j in range(0, len(array_address_offset)):
+            tmp_reg_addr = str(array_address_offset[j]).split("=")
+            # 处理地址单元格中为整数的情况，它们会被读取为float型
+            if str(tmp_reg_addr[0]).find("."):
+                tmp_reg_addr = tmp_reg_addr[0].replace(".0","")
+            else:
+                tmp_reg_addr = tmp_reg_addr[0]
+            # 生成返回拆分后的寄存器地址格式
+            address = hex(int(tmp_base_addr) + int(tmp_reg_addr)) + "=" + str(tmp_base_name)
+            return_address.append(address)
+
+    # 返回计算和拆分后的寄存器地址数组
+    return  return_address
+
+
+# ---------------------------------------------------------------------------------
+# 函数名称：get_reg_addr_value
+# 函数功能：根据addr计算寄存器地址，若对应多个地址需要拆分
+# 函数输入：
+# 函数输出：寄存器地址数组，每个元素的格式式为 address=name
+# #         其中：address为地址，name为子模块名称（默认为NONE）
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def get_reg_addr_value(dict_reg_var,reg_address):
+
+    # 同一个寄存器需要复制多份的处理，判断需要复制的条件为：reg_addr的地址格式为：base_offset + offset * num
+    # 寄存器复制份数由num决定，num的值从reg_var中查询获得，如果在reg_var中不存在则按num=0处理，且记录异常
+    # 同一个寄存器复制多份时在生成记录时在寄存器名称后面加"_i"，其中i=0..num-1
+
+    arr_reg_addr = []
+    if "" != reg_address:
+        # 将中文字符替换为英文字符
+        reg_address = reg_address.replace("+", "+")
+        reg_address = reg_address.replace("×", "*")
+        reg_address = reg_address.replace("：", ":")
+
+        array_reg_addr_pre = []
+        # 基于换行符拆分成数组，对应base_address存在换行的情况
+        reg_address = reg_address.split("\n")
+        for i in range(0, len(reg_address)):
+            if "" != reg_address[i].replace(" ",""):
+                # 基于冒号将一行数据拆分成数组，对应base_address的情况
+                tmp_reg_addr = reg_address[i].split(":")
+                tmp_reg_name = ""
+                if 2 == len(tmp_reg_addr):
+                    if -1 == tmp_reg_addr[0].find("0x"):
+                        tmp_reg_name = tmp_reg_addr[0]
+                        tt_value = tmp_reg_addr[1]
+                    else:
+                        tmp_reg_name = tmp_reg_addr[1]
+                        tt_value = tmp_reg_addr[0]
+                    print("tmp_reg_name = " + str(tmp_reg_name) + " tt_value = " + str(tt_value) )
+                    tt_reg_addr = tt_value.split("+")
+                    if 2 == len(tt_reg_addr):
+                        tmp_offset =[]
+                        tmp_offset.append(tt_reg_addr[0].replace("_",""))
+                        tmp_array_reg_addr = get_reg_add_by_multiplication(tt_reg_addr[1].split('*'),dict_reg_var,tmp_offset)
+                    else:
+                        tmp_array_reg_addr=[]
+                        tmp_array_reg_addr.append(tt_reg_addr[0])
+                    print("tmp_array_reg_addr = " + str(tmp_array_reg_addr))
+                    for kk in range(0,len(tmp_array_reg_addr)):
+                        #if -1 == str(tmp_array_reg_addr[kk]).find('0x'):
+                        #    tmp_array_reg_addr[kk] = hex(tmp_array_reg_addr[kk])
+                        array_reg_addr_pre.append(str(tmp_array_reg_addr[kk]) + "=" + str(tmp_reg_name))
+                else:
+                    tt_value = tmp_reg_addr[0]
+                    tmp_reg_name = i
+                    array_reg_addr_pre.append(str(tt_value) + "=" + str(tmp_reg_name))
+
+        # 逐行数据进行处理
+        for i in range(0, len(array_reg_addr_pre)):
+            reg_addr = array_reg_addr_pre[i].split("=")
+            #reg_addr = array_reg_addr[i].replace("_", "")
+            # 获得子模块的名称
+            if "" != reg_addr[1].replace("_",""):
+                reg_name = reg_addr[1]
+            else:
+                reg_name = "NONE"
+
+            # 获得寄存器的地址
+            reg_addr = reg_addr[0]
+
+            if "" != reg_addr.replace(" ",""):
+                # 判断寄存器地址是否为组合地址，判定条件为是否包括+
+                if -1 != reg_addr.find("+"):
+
+                    # 通过+分隔成数组，可能拆分成多个数组
+                    if -1 ==reg_addr.find("("):
+                        reg_addr = reg_addr.split("+")
+                    else:
+                        reg_addr = reg_addr.split("+", 1)  # 只拆分一次
+                    for n in range(0, len(reg_addr)):
+                        # 通过*分隔成数组
+                        tmp_addr = reg_addr[n].split("*")
+                        # 通过数组长度来判断是否包括*，如果包含*则需要进一步拆分处理
+                        if 2 == len(tmp_addr):
+                            arr_reg_addr = get_reg_add_by_multiplication(tmp_addr, dict_reg_var, arr_reg_addr)
+                            #print("++++++\n    arr_reg_addr:",arr_reg_addr)
+                        else:
+                            # 某不包含*则元素为一个具体值，将之添加到返回数组的每个元素中
+                            base_addr = tmp_addr[0].replace("_","")  # 组合地址无*号的一边去下划线
+                            if -1 != base_addr.find("0x"):
+                                base_addr = int(base_addr, 16)
+                            else:
+                                base_addr = base_addr
+                            if 0 == len(arr_reg_addr):
+                                arr_reg_addr.append(base_addr)
+
+                            else:
+                                for m in range(0, len(arr_reg_addr)):
+
+                                    m_arr_reg_addr = str(arr_reg_addr[m]).split("=")
+                                    m_arr_reg_addr = int(m_arr_reg_addr[0])
+                                    arr_reg_addr[m] = m_arr_reg_addr + base_addr
+                else:
+                # 若不包含+则通过判断是否包含*继续判断是否为组合地址
+                    tmp_addr = reg_addr.split("*")
+
+                    # 通过数组长度来判断是否包括*，如果包含*则需要进一步拆分处理
+                    if 2 == len(tmp_addr):
+                        arr_reg_addr = get_reg_add_by_multiplication(tmp_addr, dict_reg_var, arr_reg_addr)
+
+                    else:
+                        reg_addr = reg_addr.replace("_","")
+                        if -1 != reg_addr.find("0x"):
+                            addr = int(reg_addr, 16)
+                        else:
+                            addr = reg_addr
+                        arr_reg_addr.append(addr)
+
+            # 生成返回拆分后的寄存器地址格式
+            for k in range(0, len(arr_reg_addr)):
+                arr_reg_addr[k] = str(arr_reg_addr[k]) + "=" + str(reg_name)
+    # 返回计算和拆分后的寄存器地址数组
+    print("arr_reg_addr====",arr_reg_addr)
+    return arr_reg_addr
+
+
+# ---------------------------------------------------------------------------------
+# 函数名称：get_reg_add_by_multiplication
+# 函数功能：对寄存器地址中a*b格式的处理
+# 函数输入：
+# 函数输出：寄存器偏移地址数组
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+
+def get_reg_add_by_multiplication(array_address, dict_reg_var, array_addr_offset):
+    print("\tarray_address = " + str(array_address))
+    print("\tarray_addr_offset = " + str(array_addr_offset))
+    if 2 == len(array_address):
+
+        offset = ""
+        item = ""
+        tmp_addr_0 = array_address[0]
+        tmp_addr_1 = array_address[1]
+
+        # 对于*号左右两边都是数值的情况
+        if -1 != tmp_addr_0.find("0x") and True == tmp_addr_1.isdecimal():
+            tmp = str(int(tmp_addr_0, 16) * int(tmp_addr_1))
+            array_addr_offset.append(tmp)
+        if -1 != tmp_addr_1.find("0x") and True == tmp_addr_0.isdecimal():
+            tmp = str(int(tmp_addr_1, 16) * int(tmp_addr_0))
+            array_addr_offset.append(tmp)
+            print('array_addr_offset='+str(array_addr_offset)+"  "+'tmp=='+str(tmp))
+        # 从*左右两边识别出地址偏移值和变量
+        if (-1 != str(tmp_addr_0).find("0x")) or (False != tmp_addr_0.isdecimal()):
+            # *号左边为变量
+            is_tmp_addr_0 = 0
+        else:
+            # *号左边为地址偏移值
+            is_tmp_addr_0 = 1
+
+        if 0 == is_tmp_addr_0:
+            offset = tmp_addr_0
+        else:
+            item = tmp_addr_0
+
+        if (-1 != str(tmp_addr_1).find("0x")) or (False != tmp_addr_1.isdecimal()):
+            # *号右边为变量
+            is_tmp_addr_1 = 0
+        else:
+            # *号右边为地址偏移值
+            is_tmp_addr_1 = 1
+
+        if 0 == is_tmp_addr_1:
+            offset = tmp_addr_1
+        else:
+            item = tmp_addr_1
+
+        item = str(item).replace(" ","")
+        if offset.isdecimal()==True:
+            offset=int(offset)
+        else:
+            offset = str(offset).replace("_", "").replace(" ","")
+            offset = int(offset, 16)
+
+        if "" == offset or "" == item:
+            print("error")
+        else:
+
+            if -1 != item.find("+"):
+                item_add = item.replace("(","").replace(")","").split("+")  # 把(var1+var2)型拆为var1,var2
+                if item_add[0] in dict_reg_var:
+                    va_item_0 = dict_reg_var.get(item_add[0])
+                    tmp_item_0 = str(va_item_0).replace("~", "~").split("~")
+                    num_0 = int(tmp_item_0[1]) + 1
+                else:
+                    num_0 = item_add[0]
+                if item_add[1] in dict_reg_var:
+                    va_item_1 = dict_reg_var.get(item_add[1])
+                    tmp_item_1 = str(va_item_1).replace("~", "~").split("~")
+                    num_1 = int(tmp_item_1[1]) + 1
+                else:
+                    num_1 = item_add[1]
+                num = num_0+num_1
+
+            else:
+                if item in dict_reg_var:
+                    va_item = dict_reg_var.get(item)
+                    tmp_item = str(va_item).replace("~","~").split("~")
+                    num = int(tmp_item[1]) + 1
+                    print("item = " + str(item) + " va_item = " + str(va_item) + " tmp_item = " + str(tmp_item))
+                else:
+                    num = 1
+            print("item = " + str(item) + " num = " + str(num) + " dict_reg_var = " + str(dict_reg_var))
+            # 基于偏移量和变量拆分出具体的地址列表
+            tmp_array = []
+            if 0 == len(array_addr_offset):
+                for n in range(0, int(num)):
+                    print("offset:",offset)
+                    tmp_value = offset * n
+                    tmp_array.append(tmp_value)
+            else:
+                for n in range(0, int(num)):
+                    for m in range(0, len(array_addr_offset)):
+                        #print("array_addr_offset", array_addr_offset)
+                        if -1 != str(array_addr_offset[m]).find("="):
+                            tmp_array_add_offset = array_addr_offset[m].split("=")
+                            tmp_array_add_offset = tmp_array_add_offset[0].replace(" ","")
+                        else:
+                            tmp_array_add_offset = str(array_addr_offset[m]).replace("_","").replace(" ","")
+
+                        if -1 == str(tmp_array_add_offset).find('0x'):
+                            tmp_value = int(tmp_array_add_offset) + offset * n
+                        else:
+                            tmp_value = int(tmp_array_add_offset, 16) + offset * n
+
+                        tmp_array.append(tmp_value)
+            array_addr_offset = tmp_array
+
+        return array_addr_offset
+
+# ---------------------------------------------------------------------------------
+# 函数名称：get_reg_var
+# 函数功能：从reg_var表单中获得各临时变量的取值
+# 函数输入：
+# 函数输出：输出字典（哈希）格式
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def get_reg_var(workbook,sheets_list):
+    dict_reg_var = {}
+    # 获得各临时变量的取值范围
+    for sheetname in sheets_list:
+
+        if "reg_var" == sheetname or "register_variable" == sheetname:
+            sheet = workbook.sheet_by_name(sheetname)
+
+            nrows = sheet.nrows
+            # 使用字典（HASH）存储各临时变量的取值
+            for rownum in range(5,nrows):
+                reg_var_name = str(sheet.cell_value(rownum,0))
+                reg_var_range = str(sheet.cell_value(rownum,1))
+                # 取值列不为空时有效
+                if "" != reg_var_range:
+                    # 取值的格式有两种：
+                    # 范围类，格式：xx~xx，注：存在输入不规范的情况，中间英文~会输入中文~，在处理时将中文~替换为英文~
+                    # 取值类，格式：单个数值，注：读出来的格式为float，需要转换为int（去掉后在的.0）
+                    reg_var_range = str(reg_var_range)
+                    reg_var_range = reg_var_range.replace("～", "~")
+                    if -1 == reg_var_range.find("~"):
+                        reg_var_range = reg_var_range.replace(".0","")
+                    else:
+                        reg_var_range = reg_var_range.split("~")
+
+                    # 统一输出格式，某个变量的取值输出格式为：xx~xx
+                    # 范围类直接取现最小值和最大值生成输出格式，注：若最大值的类型不为数字(存在字母)则取0
+                    # 取值类将最小值和最大值设置成相同的值
+                    if 2 == len(reg_var_range):
+                        if reg_var_range[1].isdecimal():
+                            reg_var_range = reg_var_range[0] + "~" + reg_var_range[1]
+
+                        else:
+                            reg_var_range = reg_var_range[0] + "~" + reg_var_range[0]
+                    else:
+                        reg_var_range = reg_var_range[0] + "~" + reg_var_range[0]
+
+                    dict_reg_var[reg_var_name] = reg_var_range
+    return dict_reg_var
+
+
+
+
+#if __name__ == '__main__':
+#    dict_reg_var = load_register("SD5182H","v3.3","e:/SD5182HV100 nManger, v3.3.xlsm")
+    #tmp = get_reg_addr_value({'groups_1': '0~7'}, "0x408+0x10*groups_1")
+    #print(len(tmp))
+    #tmp = get_reg_addr({'groups_1': '0~7'}, "0x10170000","0x408+0x10*groups_1")
+    #print(len(tmp))
+
+#if __name__ == '__main__':
+#    array_address = "0x0062_c000 + 0x8_0000*ngpon_num\n0x0072_c000 + 0x8_0000*ngpon_num\n0x0082_c000 + 0x8_0000*ngpon_num\n0x0092_c000 + 0x8_0000*ngpon_num"
+#    dict_reg_var = {'ngpon_num' : '0~1'}
+#    print("AA")
+#    ret = get_reg_add_by_multiplication(array_address, dict_reg_var, '0x0')
+#    print("BB")
+#    print(ret)
