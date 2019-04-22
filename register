@@ -1,0 +1,34 @@
+import sys
+import os
+from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QApplication, QMainWindow
+
+from register_main import *
+from register_load import *
+from register_compare import *
+import cgitb
+
+#cgitb.enable( format = 'text')
+
+
+
+if __name__ == '__main__':
+    db = pymysql.connect(host='10.93.168.132', port=3306, user='root', password='admin', database='chip',charset='utf8')
+    cursor = db.cursor()
+    app = QApplication(sys.argv)
+    #app = QApplication(sys.argv)，每一个pyqt程序必须创建一个application对象，
+    #sys.argv是命令行参数，可以通过命令启动的时候传递参数。
+    mainWindow = QMainWindow()
+    #生成过一个实例（对象）, mainWindow是实例（对象）的名字，可以随便起。
+    ui = Ui_Register()
+    ui.setupUi(mainWindow,db,cursor)
+    ui.update_box_chip()
+
+    #ui_load = Ui_Load()
+    mainWindow.show()  #用来显示窗口
+    #ui.connect(self)
+    #ui.act_menu_import_reg.connect(ui_load.show)
+
+    sys.exit(app.exec_())#exec_()方法的作用是“进入程序的主循环直到exit()被调
+    cursor.close()
+    db.close()
