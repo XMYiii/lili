@@ -1,0 +1,971 @@
+# -*- coding: utf-8 -*-
+import xlrd
+import xlsxwriter
+import sys
+import os
+import pymysql
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QIcon, QBrush, QColor, QFont
+from PyQt5.QtCore import Qt, QFileInfo, pyqtSignal, QTimer
+
+# ---------------------------------------------------------------------------------
+# 函数名称：register_compare
+# 函数功能：版本寄存器差异分析
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def register_compare(db, cursor, src_chip, src_version, dst_chip, dst_version):
+
+    array_module_src = get_module(cursor, src_chip, src_version)
+    print('array_module_src=',array_module_src)
+    array_module_dst = get_module(cursor, dst_chip, dst_version)
+    print('array_module_dst=',array_module_dst)
+
+    for i_src in range(0, len(array_module_src)):
+        src_module = array_module_src[i_src]
+        # 删除已存在的比较记录
+        del_compare_record(cursor, src_chip, src_version, dst_chip, dst_version, src_module, 'reg_compare')
+        del_compare_record(cursor, src_chip, src_version, dst_chip, dst_version, src_module, 'reg_field_compare')
+
+        # 基于模块查询获得源和目的寄存器信息
+        array_field_src = get_reg_and_field(cursor, src_chip, src_version, src_module)
+        array_field_dst = get_reg_and_field(cursor, dst_chip, dst_version, src_module)
+        # 基于模块查询获得源和目的寄存器名称信息
+        array_reg_src = get_reg(cursor, src_chip, src_version, src_module)
+        array_reg_dst = get_reg(cursor, dst_chip, dst_version, src_module)
+
+        # 基于模块进行比对
+        array_field    = compare_field(array_field_src, array_field_dst, src_chip, src_version, dst_chip, dst_version, src_module)
+        #print("field_compare=",array_field)
+        array_register = compare_register(array_reg_src, array_reg_dst, src_chip, src_version, dst_chip, dst_version, src_module)
+        #print('register_compare=',array_register)
+
+        # 向数据库中插入数据
+        insert_compare_record(db, cursor, array_field, array_register)
+
+    compare_module(db, cursor, array_module_src, array_module_dst, src_chip, src_version, dst_chip, dst_version)
+
+# ---------------------------------------------------------------------------------
+# 函数名称：is_exist_compare
+# 函数功能：基于芯片名称和版本获得模块列表
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def is_exist_compare(cursor, src_chip, src_version, dst_chip, dst_version):
+
+    sql_get_field_compare = "SELECT * FROM reg_field_compare WHERE src_chip='" \
+                            + str(src_chip) + "' and src_version='" \
+                            + str(src_version) + "' and dst_chip='" \
+                            + str(dst_chip) + "' and dst_version='" \
+                            + str(dst_version) + "'" \
+
+    cursor.execute(sql_get_field_compare)
+    field = cursor.fetchall()
+
+    sql_get_reg_compare = "SELECT * FROM reg_compare WHERE src_chip='" \
+                            + str(src_chip) + "' and src_version='" \
+                            + str(src_version) + "' and dst_chip='" \
+                            + str(dst_chip) + "' and dst_version='" \
+                            + str(dst_version) + "'" \
+
+    cursor.execute(sql_get_reg_compare)
+    reg = cursor.fetchall()
+
+    if (0 != len(reg)) and (0 != len(field)):
+        return 1
+
+    return 0
+
+# ---------------------------------------------------------------------------------
+# 函数名称：get_module
+# 函数功能：基于芯片名称和版本获得模块列表
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def get_module(cursor, chip, version):
+    array_module = []
+    sql_get_module = "SELECT module FROM reg_field WHERE chip='" \
+                        + str(chip) + "' and version='" \
+                        + str(version) + "' GROUP BY module"
+
+    cursor.execute(sql_get_module)
+    module = cursor.fetchall()
+    if 0 != len(module):
+        for item in module:
+            array_module.append(item[0])
+
+    return array_module
+
+# ---------------------------------------------------------------------------------
+# 函数名称：get_reg_and_field
+# 函数功能：基于芯片名称和版本获得寄存器和域列表
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def get_reg_and_field(cursor, chip, version, module):
+    array_field = []
+    sql_field_src = "SELECT * FROM reg_field WHERE chip='" \
+                    + str(chip) + "' and version='" \
+                    + str(version) + "' and module='" \
+                    + str(module) + "' ORDER BY reg_name"
+
+    cursor.execute(sql_field_src)
+    register = cursor.fetchall()
+
+    if 0 != len(register):
+        for item in register:
+            array_field.append(item)
+
+    return array_field
+# ---------------------------------------------------------------------------------
+# 函数名称：get_reg
+# 函数功能：基于芯片名称和版本获得寄存器列表
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def get_reg(cursor, chip, version, module):
+    array_reg = []
+    sql_field_src = "SELECT * FROM reg WHERE chip='" \
+                    + str(chip) + "' and version='" \
+                    + str(version) + "' and module='" \
+                    + str(module) + "' ORDER BY reg_name"
+
+    cursor.execute(sql_field_src)
+    register = cursor.fetchall()
+
+    if 0 != len(register):
+        for item in register:
+            array_reg.append(item)
+
+    return array_reg
+
+
+# ---------------------------------------------------------------------------------
+# 函数名称：del_compare_record
+# 函数功能：删除已有的差异分析记录
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def del_compare_record(cursor, src_chip, src_version, dst_chip, dst_version, module, table):
+    sql_del_compare_record = "DELETE FROM " + str(table) + " WHERE src_chip='" \
+                            + str(src_chip) + "' and src_version='" \
+                            + str(src_version) + "' and dst_chip='" \
+                            + str(dst_chip) + "' and dst_version='" \
+                            + str(dst_version) + "' and module='" \
+                            + str(module) + "'"
+    cursor.execute(sql_del_compare_record)
+
+# ---------------------------------------------------------------------------------
+# 函数名称：insert_compare_record
+# 函数功能：向数据库中写入差异分析记录
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def insert_compare_record(db, cursor, array_field, array_register):
+
+    key_field = "INSERT INTO reg_field_compare (" \
+                "src_chip,src_version,dst_chip,dst_version,module,reg_name,reg_desc," \
+                "field_name,field_desc,field_range,field_attr,field_defv,field_desc_dst,field_range_dst,field_attr_dst,field_defv_dst," \
+                "modify,modify_info" \
+                ") VALUES(" \
+                "%s,%s,%s,%s,%s,%s,%s," \
+                "%s,%s,%s,%s,%s,%s,%s,%s,%s," \
+                "%s,%s" \
+                ")"
+
+    if 200 > len(array_field):
+        cursor.executemany(key_field, array_field)
+        db.commit()
+    else:
+        tmp_array_field = []
+        m = 1
+        for i in range(0,len(array_field)):
+            tmp_array_field.append(array_field[i])
+            if i == m * 199:
+                cursor.executemany(key_field, tmp_array_field)
+                db.commit()
+                m = m + 1
+                tmp_array_field = []
+        if 0 != len(array_field) % 199:
+                cursor.executemany(key_field, tmp_array_field)
+                db.commit()
+
+    key_register = "INSERT INTO reg_compare (" \
+                    "src_chip,src_version,dst_chip,dst_version,module,reg_name," \
+                    "reg_desc,reg_addr,reg_attr,reg_defv,reg_desc_dst,reg_addr_dst,reg_attr_dst,reg_defv_dst," \
+                    "modify,modify_info" \
+                    ") VALUES(" \
+                    "%s,%s,%s,%s,%s,%s," \
+                    "%s,%s,%s,%s,%s,%s,%s,%s," \
+                    "%s,%s" \
+                    ")"
+
+    if 200 > len(array_register):
+        cursor.executemany(key_register, array_register)
+        db.commit()
+    else:
+        tmp_array_reg = []
+        m = 1
+        for i in range(0,len(array_register)):
+            tmp_array_reg.append(array_register[i])
+            if i == m * 199:
+                cursor.executemany(key_register, tmp_array_reg)
+                db.commit()
+                m = m + 1
+                tmp_array_reg = []
+        if 0 != len(array_register) % 199:
+                cursor.executemany(key_register, tmp_array_reg)
+                db.commit()
+
+# ---------------------------------------------------------------------------------
+# 函数名称：compare_field
+# 函数功能：寄存器域的差异分析
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def compare_field(array_field_src, array_field_dst, src_chip, src_version, dst_chip, dst_version, module):
+
+    id_reg_name = 4
+    id_reg_desc = 5
+    id_reg_addr = 7
+    id_reg_attr = 10
+    id_reg_defv = 11
+    id_field_name = 13
+    id_field_desc = 18
+    id_field_range = 14
+    id_field_addr = 15
+    id_field_defv = 16
+
+    array_field = []
+    tmp_array_reg_src = []
+    tmp_array_reg_dst = []
+    for src in range(0, len(array_field_src)):
+        src_reg_name = array_field_src[src][id_reg_name]
+        src_reg_desc = array_field_src[src][id_reg_desc]
+        src_field_name = array_field_src[src][id_field_name]
+        src_field_desc = array_field_src[src][id_field_desc]
+        src_field_range = array_field_src[src][id_field_range]
+        src_field_attr = array_field_src[src][id_field_addr]
+        src_field_defv = array_field_src[src][id_field_defv]
+
+        sign = 0
+        if "RESERVED" == src_field_name.upper():
+            # 跳过域名为RESERVED的域
+            sign = 1
+        else:
+            dst = 0
+            while (dst < len(array_field_dst)):
+                dst_reg_name = array_field_dst[dst][id_reg_name]
+                dst_reg_desc = array_field_dst[dst][id_reg_desc]
+                dst_field_name = array_field_dst[dst][id_field_name]
+                dst_field_desc = array_field_dst[dst][id_field_desc]
+                dst_field_range = array_field_dst[dst][id_field_range]
+                dst_field_attr = array_field_dst[dst][id_field_addr]
+                dst_field_defv = array_field_dst[dst][id_field_defv]
+
+                if str(src_reg_name) == str(dst_reg_name) and str(src_field_name) == str(dst_field_name):
+                # 判断寄存器域信息是否有修改
+                    tmp_array_reg_src.append(array_field_src[src])
+                    tmp_array_reg_dst.append(array_field_dst[dst])
+
+                    sign = 1
+                    dst = len(array_field_dst) + 1
+                    modify = "none"
+                    msg = ""
+
+                    if str(src_field_desc) != str(dst_field_desc):
+                        modify = "modify"
+                        msg = msg + "寄存器域 " + str(src_field_name) + " 描述有修改\n"
+
+                    if str(src_field_range) != str(dst_field_range):
+                        modify = "modify"
+                        msg = msg + "寄存器域 " + str(src_field_name) + " 范围有修改\n"
+
+                    if str(src_field_attr) != str(dst_field_attr):
+                        modify = "modify"
+                        msg = msg + "寄存器域 " + str(src_field_name) + " 属性有修改\n"
+
+                    if str(src_field_defv) != str(dst_field_defv):
+                        modify = "modify"
+                        msg = msg + "寄存器域 " + str(src_field_name) + " 默认值有修改\n"
+
+                    if "" != msg:
+                        msg = msg[:-1]
+
+                    tmp_field = []
+                    tmp_field.append(src_chip)
+                    tmp_field.append(src_version)
+                    tmp_field.append(dst_chip)
+                    tmp_field.append(dst_version)
+                    tmp_field.append(module)
+                    tmp_field.append(src_reg_name)
+                    tmp_field.append(src_reg_desc)
+                    tmp_field.append(src_field_name)
+                    tmp_field.append(src_field_desc)
+                    tmp_field.append(src_field_range)
+                    tmp_field.append(src_field_attr)
+                    tmp_field.append(src_field_defv)
+                    tmp_field.append(dst_field_desc)
+                    tmp_field.append(dst_field_range)
+                    tmp_field.append(dst_field_attr)
+                    tmp_field.append(dst_field_defv)
+                    tmp_field.append(modify)
+                    tmp_field.append(msg)
+                    array_field.append(tmp_field)
+                dst = dst + 1
+        # 新增寄存器域的处理
+        if 0 == sign:
+            tmp_field = []
+            tmp_field.append(src_chip)
+            tmp_field.append(src_version)
+            tmp_field.append(dst_chip)
+            tmp_field.append(dst_version)
+            tmp_field.append(module)
+            tmp_field.append(src_reg_name)
+            tmp_field.append(src_reg_desc)
+            tmp_field.append(src_field_name)
+            tmp_field.append(src_field_desc)
+            tmp_field.append(src_field_range)
+            tmp_field.append(src_field_attr)
+            tmp_field.append(src_field_defv)
+            tmp_field.append("")
+            tmp_field.append("")
+            tmp_field.append("")
+            tmp_field.append("")
+            tmp_field.append("add")
+            tmp_field.append("新增的域")
+            array_field.append(tmp_field)
+
+    # 已删除寄存器域的处理
+    for dst in range(0, len(array_field_dst)):
+
+        dst_reg_name = array_field_dst[dst][id_reg_name]
+        dst_reg_desc = array_field_dst[dst][id_reg_desc]
+        dst_field_name = array_field_dst[dst][id_field_name]
+        dst_field_desc = array_field_dst[dst][id_field_desc]
+        dst_field_range = array_field_dst[dst][id_field_range]
+        dst_field_attr = array_field_dst[dst][id_field_addr]
+        dst_field_defv = array_field_dst[dst][id_field_defv]
+
+        sign = 0
+        if "RESERVED" == dst_field_name.upper():
+            # 跳过域名为RESERVED的域
+            sign = 1
+        else:
+            tmp_src = 0
+            while (tmp_src < len(tmp_array_reg_src)):
+                tmp_dst_reg_name = tmp_array_reg_src[tmp_src][id_reg_name]
+                tmp_dst_field_name = tmp_array_reg_src[tmp_src][id_field_name]
+                if str(dst_reg_name) == str(tmp_dst_reg_name) and str(dst_field_name) == str(tmp_dst_field_name):
+                    sign = 1
+                    tmp_src = len(tmp_array_reg_src)
+                tmp_src = tmp_src + 1
+
+        if 0 == sign:
+            tmp_field = []
+            tmp_field.append(src_chip)
+            tmp_field.append(src_version)
+            tmp_field.append(dst_chip)
+            tmp_field.append(dst_version)
+            tmp_field.append(module)
+            tmp_field.append(dst_reg_name)
+            tmp_field.append(dst_reg_desc)
+            tmp_field.append(dst_field_name)
+            tmp_field.append("")
+            tmp_field.append("")
+            tmp_field.append("")
+            tmp_field.append("")
+            tmp_field.append(dst_field_desc)
+            tmp_field.append(dst_field_range)
+            tmp_field.append(dst_field_attr)
+            tmp_field.append(dst_field_defv)
+            tmp_field.append("del")
+            tmp_field.append("已删除的域")
+            array_field.append(tmp_field)
+
+    return array_field
+
+# ---------------------------------------------------------------------------------
+# 函数名称：compare_register
+# 函数功能：寄存器的差异分析
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def compare_register(array_reg_src, array_reg_dst, src_chip, src_version, dst_chip, dst_version, module):
+
+    id_reg_name = 4
+    id_reg_desc = 5
+    id_reg_addr = 7
+    id_reg_attr = 10
+    id_reg_defv = 11
+    id_field_name = 13
+    id_field_desc = 18
+    id_field_range = 14
+    id_field_addr = 15
+    id_field_defv = 16
+    array_field = []
+    tmp_array_reg_src = []
+    tmp_array_reg_dst = []
+    last_reg_name = ""
+    last_reg_addr = ""
+    for src in range(0, len(array_reg_src)):
+        src_reg_name = array_reg_src[src][id_reg_name]
+        src_reg_desc = array_reg_src[src][id_reg_desc]
+        src_reg_addr = array_reg_src[src][id_reg_addr]
+        src_reg_attr = array_reg_src[src][id_reg_attr]
+        src_reg_defv = array_reg_src[src][id_reg_defv]
+        if str(last_reg_addr) != str(src_reg_addr):
+            src_reg_addr = src_reg_addr
+            sign = 0
+            dst = 0
+            while (dst < len(array_reg_dst)):
+                dst_reg_name = array_reg_dst[dst][id_reg_name]
+                dst_reg_desc = array_reg_dst[dst][id_reg_desc]
+                dst_reg_addr = array_reg_dst[dst][id_reg_addr]
+                dst_reg_attr = array_reg_dst[dst][id_reg_attr]
+                dst_reg_defv = array_reg_dst[dst][id_reg_defv]
+
+                if str(src_reg_addr) == str(dst_reg_addr):
+                # 判断寄存器信息是否有修改
+                    sign = 1
+                    tmp_array_reg_src.append(array_reg_src[src])
+                    tmp_array_reg_dst.append(array_reg_dst[dst])
+
+                    dst = len(array_reg_dst)
+                    modify = "none"
+                    msg = ""
+                    # 判断寄存器地址以外信息是否修改
+                    if str(src_reg_desc) != str(dst_reg_desc):
+                        modify = "modify"
+                        msg = msg + "寄存器 " + str(src_reg_name) + " 描述有修改\n"
+
+                    if str(src_reg_name) != str(dst_reg_name):
+                        modify = "modify"
+                        msg = msg + "寄存器域 " + str(src_reg_name) + " 名称有修改\n"
+
+                    if str(src_reg_attr) != str(dst_reg_attr):
+                        modify = "modify"
+                        msg = msg + "寄存器域 " + str(src_reg_name) + " 属性有修改\n"
+
+                    if str(src_reg_defv) != str(dst_reg_defv):
+                        modify = "modify"
+                        msg = msg + "寄存器域 " + str(src_reg_name) + " 默认值有修改\n"
+
+                    if "" != msg:
+                        msg = msg[:-1]  # 获取从偏移为0的字符一直到最后一个字符（不包括最后一个字符串）
+
+                    tmp_field = []
+                    tmp_field.append(src_chip)
+                    tmp_field.append(src_version)
+                    tmp_field.append(dst_chip)
+                    tmp_field.append(dst_version)
+                    tmp_field.append(module)
+                    tmp_field.append(src_reg_name)
+                    tmp_field.append(src_reg_desc)
+                    tmp_field.append(src_reg_addr)
+                    tmp_field.append(src_reg_attr)
+                    tmp_field.append(src_reg_defv)
+                    tmp_field.append(dst_reg_desc)
+                    tmp_field.append(dst_reg_addr)
+                    tmp_field.append(dst_reg_attr)
+                    tmp_field.append(dst_reg_defv)
+                    tmp_field.append(modify)
+                    tmp_field.append(msg)
+                    array_field.append(tmp_field)
+                dst = dst + 1
+
+            # 新增寄存器的处理
+            if 0 == sign:
+                tmp_field = []
+                tmp_field.append(src_chip)
+                tmp_field.append(src_version)
+                tmp_field.append(dst_chip)
+                tmp_field.append(dst_version)
+                tmp_field.append(module)
+                tmp_field.append(src_reg_name)
+                tmp_field.append(src_reg_desc)
+                tmp_field.append(src_reg_addr)
+                tmp_field.append(src_reg_attr)
+                tmp_field.append(src_reg_defv)
+                tmp_field.append("")
+                tmp_field.append("")
+                tmp_field.append("")
+                tmp_field.append("")
+                tmp_field.append("add")
+                tmp_field.append("新增的寄存器")
+                array_field.append(tmp_field)
+
+    # 已删除寄存器的处理
+    for dst in range(0, len(array_reg_dst)):
+        dst_reg_name = array_reg_dst[dst][id_reg_name]
+        dst_reg_desc = array_reg_dst[dst][id_reg_desc]
+        dst_reg_addr = array_reg_dst[dst][id_reg_addr]
+        dst_reg_attr = array_reg_dst[dst][id_reg_attr]
+        dst_reg_defv = array_reg_dst[dst][id_reg_defv]
+        sign = 0
+        tmp_scr = 0
+        while (tmp_scr < len(tmp_array_reg_src)):
+            tmp_src_reg_addr = tmp_array_reg_src[tmp_scr][id_reg_addr]
+            if str(dst_reg_addr) == str(tmp_src_reg_addr):
+                sign = 1
+                tmp_scr = len(tmp_array_reg_src)  # 相同则跳过
+            tmp_scr = tmp_scr + 1
+
+        if 0 == sign:
+            tmp_field = []
+            tmp_field.append(src_chip)
+            tmp_field.append(src_version)
+            tmp_field.append(dst_chip)
+            tmp_field.append(dst_version)
+            tmp_field.append(module)
+            tmp_field.append(dst_reg_name)
+            tmp_field.append("")
+            tmp_field.append("")
+            tmp_field.append("")
+            tmp_field.append("")
+            tmp_field.append(dst_reg_desc)
+            tmp_field.append(dst_reg_addr)
+            tmp_field.append(dst_reg_attr)
+            tmp_field.append(dst_reg_defv)
+            tmp_field.append("del")
+            tmp_field.append("已删除的寄存器")
+            array_field.append(tmp_field)
+
+    return array_field
+
+# ---------------------------------------------------------------------------------
+# 函数名称：compare_module
+# 函数功能：判断模块对应的寄存器是否已删除
+# 函数输入：
+# 函数输出：
+# 作   者：jiangyongshui 00256608
+# 创建时间：
+# 修改记录：
+# ---------------------------------------------------------------------------------
+def compare_module(db, cursor, array_module_src, array_module_dst, src_chip, src_version, dst_chip, dst_version):
+
+    for dst in range(0, len(array_module_dst)):
+        dst_module = array_module_dst[dst]
+        sign = 0
+        src = 0
+        while (src < len(array_module_src)):
+            src_module = array_module_src[src]
+            if str(dst_module) == str(src_module):
+                sign = 1
+                src = len(array_module_src)
+            src = src + 1
+
+        if 0 == sign:
+
+            # 删除已存在的比较记录
+            del_compare_record(cursor, src_chip, src_version, dst_chip, dst_version, dst_module, 'reg_compare')
+            del_compare_record(cursor, src_chip, src_version, dst_chip, dst_version, dst_module, 'reg_field_compare')
+            # 基于模块查询获得源和目的寄存器信息
+            array_reg_dst = get_reg_and_field(cursor, dst_chip, dst_version, dst_module)
+
+            array_register = []
+            array_field = []
+            last_reg_name = ""
+            for i in range(0,len(array_reg_dst)):
+                reg_name = array_reg_dst[i][4]
+                reg_desc = array_reg_dst[i][5]
+                reg_addr = array_reg_dst[i][7]
+                reg_attr = array_reg_dst[i][10]
+                reg_defv = array_reg_dst[i][11]
+                field_name = array_reg_dst[i][13]
+                field_range = array_reg_dst[i][14]
+                field_attr = array_reg_dst[i][15]
+                field_defv = array_reg_dst[i][16]
+                field_desc = array_reg_dst[i][18]
+
+                if str(last_reg_name) != str(reg_name):
+                    last_reg_name = reg_name
+                    tmp_array_reg = []
+                    tmp_array_reg.append(src_chip)
+                    tmp_array_reg.append(src_version)
+                    tmp_array_reg.append(dst_chip)
+                    tmp_array_reg.append(dst_version)
+                    tmp_array_reg.append(dst_module)
+                    tmp_array_reg.append(reg_name)
+                    tmp_array_reg.append("")
+                    tmp_array_reg.append("")
+                    tmp_array_reg.append("")
+                    tmp_array_reg.append("")
+                    tmp_array_reg.append(reg_desc)
+                    tmp_array_reg.append(reg_addr)
+                    tmp_array_reg.append(reg_attr)
+                    tmp_array_reg.append(reg_defv)
+                    tmp_array_reg.append("del")
+                    tmp_array_reg.append("")
+                    array_register.append(tmp_array_reg)
+
+                tmp_array_field = []
+                tmp_array_field.append(src_chip)
+                tmp_array_field.append(src_version)
+                tmp_array_field.append(dst_chip)
+                tmp_array_field.append(dst_version)
+                tmp_array_field.append(dst_module)
+                tmp_array_field.append(reg_name)
+                tmp_array_field.append(reg_desc)
+                tmp_array_field.append(field_name)
+                tmp_array_field.append("")
+                tmp_array_field.append("")
+                tmp_array_field.append("")
+                tmp_array_field.append("")
+                tmp_array_field.append(field_desc)
+                tmp_array_field.append(field_range)
+                tmp_array_field.append(field_attr)
+                tmp_array_field.append(field_defv)
+                tmp_array_field.append("del")
+                tmp_array_field.append("")
+                array_field.append(tmp_array_field)
+
+            # 向数据库中插入数据
+            insert_compare_record(db, cursor, array_field, array_register)
+
+
+
+def export_compare(db, cursor, filename, src_chip, src_version, dst_chip, dst_version):
+
+    # 打开EXCEL文件
+    #workbook = xlwt.Workbook(encoding='utf-8')
+    #worksheet_reg = workbook.add_sheet("Register")
+    #worksheet_reg_modify_only = workbook.add_sheet("Register_Modify_Only")
+    #worksheet_field = workbook.add_sheet("Field")
+    #worksheet_field_modify_only = workbook.add_sheet("Field_Modify_Only")
+
+    workbook = xlsxwriter.Workbook(filename)
+    worksheet_reg = workbook.add_worksheet("Register")
+    worksheet_reg_modify_only = workbook.add_worksheet("Register_Modify_Only")
+    worksheet_field = workbook.add_worksheet("Field")
+    worksheet_field_modify_only = workbook.add_worksheet("Field_Modify_Only")
+
+    wirite_export_compare_item(workbook, worksheet_reg,"Register",src_chip,src_version,dst_chip,dst_version)
+    wirite_export_compare_item(workbook, worksheet_reg_modify_only,"Register_Modify_Only",src_chip,src_version,dst_chip,dst_version)
+    wirite_export_compare_item(workbook, worksheet_field,"Field",src_chip,src_version,dst_chip,dst_version)
+    wirite_export_compare_item(workbook, worksheet_field_modify_only,"Field_Modify_Only",src_chip,src_version,dst_chip,dst_version)
+
+    wirite_export_compare_value(workbook, worksheet_reg,"Register",src_chip,src_version,dst_chip,dst_version,cursor)
+    wirite_export_compare_value(workbook, worksheet_reg_modify_only,"Register_Modify_Only",src_chip,src_version,dst_chip,dst_version,cursor)
+    wirite_export_compare_value(workbook, worksheet_field,"Field",src_chip,src_version,dst_chip,dst_version,cursor)
+    wirite_export_compare_value(workbook, worksheet_field_modify_only,"Field_Modify_Only",src_chip,src_version,dst_chip,dst_version,cursor)
+
+    workbook.close()
+
+
+def wirite_export_compare_value(workbook, worksheet, sheetname, src_chip, src_version, dst_chip, dst_version, cursor):
+    style = workbook.add_format({
+        'font_name': '宋体',
+        'font_size': '10',
+        'border': 1,
+        'valign': 'vcenter',
+    })
+
+    if "Register" == str(sheetname):
+        sql_field_src = "SELECT * FROM reg_compare WHERE src_chip='" \
+                        + str(src_chip) + "' and src_version='" \
+                        + str(src_version) + "' and dst_chip='" \
+                        + str(dst_chip) + "' and dst_version='" \
+                        + str(dst_version) + "' ORDER BY id"
+    elif "Register_Modify_Only" == str(sheetname):
+        sql_field_src = "SELECT * FROM reg_compare WHERE src_chip='" \
+                        + str(src_chip) + "' and src_version='" \
+                        + str(src_version) + "' and dst_chip='" \
+                        + str(dst_chip) + "' and dst_version='" \
+                        + str(dst_version) + "' and modify!='none' ORDER BY id"
+    elif "Field" == str(sheetname):
+        sql_field_src = "SELECT * FROM reg_field_compare WHERE src_chip='" \
+                        + str(src_chip) + "' and src_version='" \
+                        + str(src_version) + "' and dst_chip='" \
+                        + str(dst_chip) + "' and dst_version='" \
+                        + str(dst_version) + "' ORDER BY id"
+    elif "Field_Modify_Only" == str(sheetname):
+        sql_field_src = "SELECT * FROM reg_field_compare WHERE src_chip='" \
+                        + str(src_chip) + "' and src_version='" \
+                        + str(src_version) + "' and dst_chip='" \
+                        + str(dst_chip) + "' and dst_version='" \
+                        + str(dst_version) + "' and modify!='none' ORDER BY id"
+
+
+    cursor.execute(sql_field_src)
+    register = cursor.fetchall()
+    print('register=',register)
+
+    irow = 4
+    if "Register" == str(sheetname) or "Register_Modify_Only" == str(sheetname):
+
+        last_module = ""
+        if 0 != len(register):
+            for item in register:
+                module = item[5]
+                reg_name = item[6]
+                reg_desc = item[7]
+                reg_addr = item[8]
+                reg_attr = item[9]
+                reg_defv = item[10]
+                reg_desc_dst = item[11]
+                reg_addr_dst = item[12]
+                reg_attr_dst = item[13]
+                reg_defv_dst = item[14]
+                modify = item[15]
+                modify_info = item[16]
+                confirm = item[17]
+                confirm_info = item[18]
+
+                if str(last_module) != str(module):
+                    last_module = module
+                    value_row = []
+                    value_row.append(module)
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    worksheet.write_row(irow, 0, value_row, style)
+
+                    irow = irow + 1
+
+                value_row = []
+                value_row.append("")
+                value_row.append(reg_name)
+                value_row.append(reg_desc)
+                value_row.append(reg_addr)
+                value_row.append(reg_attr)
+                value_row.append(reg_defv)
+                value_row.append(reg_desc_dst)
+                value_row.append(reg_addr_dst)
+                value_row.append(reg_attr_dst)
+                value_row.append(reg_defv_dst)
+                value_row.append(modify)
+                value_row.append(modify_info)
+                value_row.append(confirm)
+                value_row.append(confirm_info)
+                worksheet.write_row(irow, 0, value_row, style)
+                worksheet.data_validation(irow, 12, irow, 12, {'validate': 'list', 'source': ['不关注', '已确认']})
+                irow = irow + 1
+
+
+    if "Field" == str(sheetname) or "Field_Modify_Only" == str(sheetname):
+
+        last_module = ""
+        last_reg_name = ""
+        if 0 != len(register):
+            for item in register:
+                module = item[5]
+                reg_name = item[6]
+                reg_desc = item[7]
+                field_name = item[8]
+                field_desc = item[9]
+                field_range = item[10]
+                field_attr = item[11]
+                field_defv = item[12]
+                field_desc_dst = item[13]
+                field_range_dst = item[14]
+                field_attr_dst = item[15]
+                field_defv_dst = item[16]
+                modify = item[17]
+                modify_info = item[18]
+                confirm = item[19]
+                confirm_info = item[20]
+
+                if str(last_module) != str(module):
+                    last_module = module
+                    value_row = []
+                    value_row.append(module)
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+                    worksheet.write_row(irow, 0, value_row, style)
+
+                    irow = irow + 1
+
+
+                if (str(last_reg_name) != str(reg_name)):
+                    last_reg_name = reg_name
+                    value_row = []
+                    value_row.append("")
+                    value_row.append(reg_name)
+                    value_row.append(reg_desc)
+                else:
+                    #irow = irow + 1
+                    value_row = []
+                    value_row.append("")
+                    value_row.append("")
+                    value_row.append("")
+
+
+                value_row.append(field_name)
+                value_row.append(field_desc)
+                value_row.append(field_range)
+                value_row.append(field_attr)
+                value_row.append(field_defv)
+                value_row.append(field_desc_dst)
+                value_row.append(field_range_dst)
+                value_row.append(field_attr_dst)
+                value_row.append(field_defv_dst)
+                value_row.append(modify)
+                value_row.append(modify_info)
+                value_row.append(confirm)
+                value_row.append(confirm_info)
+                worksheet.write_row(irow, 0, value_row, style)
+                worksheet.data_validation(irow, 14, irow, 14, {'validate': 'list', 'source': ['不关注', '已确认']})
+
+                irow = irow + 1
+
+
+
+def wirite_export_compare_item(workbook, worksheet,sheetname,src_chip, src_version, dst_chip, dst_version):
+    style = workbook.add_format({
+        'font_name': '宋体',
+        'font_size': '10',
+        'border': 1,
+        'valign': 'vcenter',
+    })
+    style_item = workbook.add_format({
+        'font_name': '宋体',
+        'font_size': '10',
+        'border': 1,
+        'bold': True,
+        'bottom_color': '#008000',
+        'align': 'center',
+        'valign': 'vcenter',
+    })
+    if ("Register" == str(sheetname)) or ("Register_Modify_Only" == str(sheetname)):
+        worksheet.set_column(0, 0, 15)
+        worksheet.set_column(1, 1, 50)
+        worksheet.set_column(2, 2, 50)
+        worksheet.set_column(3, 3, 13)
+        worksheet.set_column(4, 4, 9)
+        worksheet.set_column(5, 5, 13)
+        worksheet.set_column(6, 6, 50)
+        worksheet.set_column(7, 7, 13)
+        worksheet.set_column(8, 8, 9)
+        worksheet.set_column(9, 9, 13)
+        worksheet.set_column(10, 10, 9)
+        worksheet.set_column(11, 11, 50)
+        worksheet.set_column(12, 12, 15)
+        worksheet.set_column(13, 13, 50)
+
+        worksheet.write("A1", "当前芯片", style_item)
+        worksheet.write("B1", src_chip, style)
+        worksheet.write("C1", "当前版本", style_item)
+        worksheet.write("D1", src_version, style)
+        worksheet.write("A2", "目标芯片", style_item)
+        worksheet.write("B2", dst_chip, style)
+        worksheet.write("C2", "目标版本", style_item)
+        worksheet.write("D2", dst_version, style)
+
+        worksheet.merge_range("A3:A4", "模块名", style_item)
+        worksheet.merge_range("B3:B4", "寄存器", style_item)
+        worksheet.merge_range("C3:F3", "当前版本",style_item)
+        worksheet.write("C4", "描述", style_item)
+        worksheet.write("D4", "地址", style_item)
+        worksheet.write("E4", "属性", style_item)
+        worksheet.write("F4", "默认值", style_item)
+        worksheet.merge_range("G3:J3", "目标版本",style_item)
+        worksheet.write("G4", "描述", style_item)
+        worksheet.write("H4", "地址", style_item)
+        worksheet.write("I4", "属性", style_item)
+        worksheet.write("J4", "默认值", style_item)
+        worksheet.merge_range("K3:K4", "修订操作", style_item)
+        worksheet.merge_range("L3:L4", "修订描述", style_item)
+        worksheet.merge_range("M3:M4", "差异确认", style_item)
+        worksheet.merge_range("N3:N4", "确认描述", style_item)
+
+    if ("Field" == str(sheetname)) or ("Field_Modify_Only" == str(sheetname)):
+        worksheet.set_column(0, 0, 15)
+        worksheet.set_column(1, 1, 50)
+        worksheet.set_column(2, 2, 50)
+        worksheet.set_column(3, 3, 50)
+        worksheet.set_column(4, 4, 50)
+        worksheet.set_column(5, 5, 9)
+        worksheet.set_column(6, 6, 9)
+        worksheet.set_column(7, 7, 13)
+        worksheet.set_column(8, 8, 50)
+        worksheet.set_column(9, 9, 9)
+        worksheet.set_column(10, 10, 9)
+        worksheet.set_column(11, 11, 13)
+        worksheet.set_column(12, 12, 9)
+        worksheet.set_column(13, 13, 50)
+        worksheet.set_column(14, 14, 15)
+        worksheet.set_column(15, 15, 50)
+
+        worksheet.write("A1", "当前芯片", style_item)
+        worksheet.write("B1", src_chip, style)
+        worksheet.write("C1", "当前版本", style_item)
+        worksheet.write("D1", src_version, style)
+        worksheet.write("A2", "目标芯片", style_item)
+        worksheet.write("B2", dst_chip, style)
+        worksheet.write("C2", "目标版本", style_item)
+        worksheet.write("D2", dst_version, style)
+
+        worksheet.merge_range("A3:A4", "模块名", style_item)
+        worksheet.merge_range("B3:B4", "寄存器", style_item)
+        worksheet.merge_range("C3:C4", "寄存器描述", style_item)
+        worksheet.merge_range("D3:D4", "寄存器域", style_item)
+        worksheet.merge_range("E3:H3", "当前版本",style_item)
+        worksheet.write("E4", "描述", style_item)
+        worksheet.write("F4", "范围", style_item)
+        worksheet.write("G4", "属性", style_item)
+        worksheet.write("H4", "默认值", style_item)
+        worksheet.merge_range("I3:L3", "目标版本",style_item)
+        worksheet.write("I4", "描述", style_item)
+        worksheet.write("J4", "范围", style_item)
+        worksheet.write("K4", "属性", style_item)
+        worksheet.write("L4", "默认值", style_item)
+        worksheet.merge_range("M3:M4", "修订操作", style_item)
+        worksheet.merge_range("N3:N4", "修订描述", style_item)
+        worksheet.merge_range("O3:O4", "差异确认", style_item)
+        worksheet.merge_range("P3:P4", "确认描述", style_item)
