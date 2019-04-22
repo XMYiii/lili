@@ -1,0 +1,689 @@
+# -*- coding: utf-8 -*-
+
+# Form implementation generated from reading ui file 'register_gui.ui'
+#
+# Created by: PyQt5 UI code generator 5.11.3
+#
+# WARNING! All changes made in this file will be lost!
+import sys
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import QIcon, QBrush, QColor, QFont
+from PyQt5.QtCore import Qt, QFileInfo, pyqtSignal, QTimer
+from register_load import *
+from register_compare import *
+
+class Ui_Register(QWidget):
+    def setupUi(self, Register, db, cursor):
+        Register.setObjectName("Register")
+        Register.resize(1479, 712)
+        self.db = db
+        self.cursor = cursor
+        self.centralwidget = QtWidgets.QWidget(Register)
+        self.centralwidget.setObjectName("centralwidget")
+        self.groupBox = QtWidgets.QGroupBox(self.centralwidget)
+        self.groupBox.setGeometry(QtCore.QRect(380, 10, 1091, 51))
+        self.groupBox.setTitle("")
+        self.groupBox.setObjectName("groupBox")
+
+
+        self.txt_get_reg = QtWidgets.QLineEdit(self.groupBox)
+        self.txt_get_reg.setGeometry(QtCore.QRect(10, 10, 971, 31))
+        self.txt_get_reg.setObjectName("txt_get_reg")
+
+        self.cmd_get_reg = QtWidgets.QPushButton(self.groupBox)
+        self.cmd_get_reg.setGeometry(QtCore.QRect(990, 10, 91, 31))
+        self.cmd_get_reg.setObjectName("cmd_get_reg")
+        self.groupBox_2 = QtWidgets.QGroupBox(self.centralwidget)
+        self.groupBox_2.setGeometry(QtCore.QRect(380, 70, 1091, 611))
+        self.groupBox_2.setTitle("")
+        self.groupBox_2.setObjectName("groupBox_2")
+
+        self.tbl_reg = QtWidgets.QTableWidget(self.groupBox_2)
+        self.tbl_reg.setGeometry(QtCore.QRect(10, 10, 1071, 591))
+        self.tbl_reg.setObjectName("tbl_reg")
+
+
+        self.groupBox_3 = QtWidgets.QGroupBox(self.centralwidget)
+        self.groupBox_3.setGeometry(QtCore.QRect(10, 10, 361, 51))
+        self.groupBox_3.setTitle("")
+        self.groupBox_3.setObjectName("groupBox_3")
+        self.label_2 = QtWidgets.QLabel(self.groupBox_3)
+        self.label_2.setGeometry(QtCore.QRect(10, 10, 54, 16))
+        font = QtGui.QFont()
+        font.setFamily("宋体")
+        font.setPointSize(10)
+        self.label_2.setFont(font)
+        self.label_2.setObjectName("label_2")
+        self.label_3 = QtWidgets.QLabel(self.groupBox_3)
+        self.label_3.setGeometry(QtCore.QRect(210, 10, 54, 16))
+        font = QtGui.QFont()
+        font.setFamily("宋体")
+        font.setPointSize(10)
+        self.label_3.setFont(font)
+        self.label_3.setObjectName("label_3")
+        self.box_chip = QtWidgets.QComboBox(self.groupBox_3)
+        self.box_chip.setGeometry(QtCore.QRect(50, 10, 151, 22))
+        font = QtGui.QFont()
+        font.setFamily("宋体")
+        font.setPointSize(10)
+        self.box_chip.setFont(font)
+        self.box_chip.setObjectName("box_chip")
+        self.box_chip.setEditable(True)
+
+        self.box_version = QtWidgets.QComboBox(self.groupBox_3)
+        self.box_version.setGeometry(QtCore.QRect(260, 10, 91, 22))
+        font = QtGui.QFont()
+        font.setFamily("宋体")
+        font.setPointSize(10)
+        self.box_version.setFont(font)
+        self.box_version.setObjectName("box_version")
+        self.box_version.setEditable(True)
+
+        self.tree_reg = QtWidgets.QTreeWidget(self.centralwidget)
+        self.tree_reg.setGeometry(QtCore.QRect(10, 70, 361, 611))
+        font = QtGui.QFont()
+        font.setFamily("宋体")
+        font.setPointSize(10)
+        self.tree_reg.setFont(font)
+        self.tree_reg.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOn)
+        self.tree_reg.setObjectName("tree_reg")
+        self.tree_reg.headerItem().setText(0, "")
+        self.tree_reg.clear()
+
+        Register.setCentralWidget(self.centralwidget)
+        self.menubar = QtWidgets.QMenuBar(Register)
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 1479, 23))
+        self.menubar.setObjectName("menubar")
+        Register.setMenuBar(self.menubar)
+
+        self.retranslateUi(Register)
+        QtCore.QMetaObject.connectSlotsByName(Register)
+
+    def retranslateUi(self, Register):
+        _translate = QtCore.QCoreApplication.translate
+        Register.setWindowTitle(_translate("Register", "Register"))
+        self.cmd_get_reg.setText(_translate("Register", "查询"))
+        self.label_2.setText(_translate("Register", "芯片"))
+        self.label_3.setText(_translate("Register", "版本"))
+        self.tbl_reg_format()
+        self.menubar_format()
+
+        self.box_chip.currentIndexChanged.connect(self.update_box_version)
+        self.box_version.currentIndexChanged.connect(self.update_tree)
+        self.tree_reg.itemClicked.connect(self.tree_reg_itemclicked)
+        self.txt_get_reg.returnPressed.connect(self.get_reg_by_txt_get_reg)
+        self.cmd_get_reg.clicked.connect(self.get_reg_by_txt_get_reg)
+        self.tbl_reg.clicked.connect(self.tbl_reg_select)
+
+
+    # ---------------------------------------------------------------------------------
+    # 函数名称：update_box_chip
+    # 函数功能：获得芯片列表
+    # 函数输入：
+    # 函数输出：
+    # 作   者：jiangyongshui 00256608
+    # 创建时间：
+    # 修改记录：
+    # ---------------------------------------------------------------------------------
+    def update_box_chip(self):
+
+        cursor = self.cursor
+        cursor.execute("select chip,version from reg_field group by chip")
+        self.chip_version = cursor.fetchall()
+        self.box_chip.insertItem(0, "")
+        index = 1
+        for row in self.chip_version:
+            if "" != row[0]:
+                self.box_chip.insertItem(index, row[0])
+                index = index + 1
+
+        self.box_version.clear()
+
+    # ---------------------------------------------------------------------------------
+    # 函数名称：update_box_version
+    # 函数功能：获得寄存器版本列表
+    # 函数输入：
+    # 函数输出：
+    # 作   者：jiangyongshui 00256608
+    # 创建时间：
+    # 修改记录：
+    # ---------------------------------------------------------------------------------
+    def update_box_version(self):
+
+        self.box_version.clear()
+        cursor = self.cursor
+        sql = "select version from reg_field where chip='" + str(self.box_chip.currentText()) +"' group by version"
+        cursor.execute(sql)
+        result = cursor.fetchall()
+        self.box_version.insertItem(0, "")
+        index = 1
+        for row in result:
+            self.box_version.insertItem(index,row[0])
+            index = index + 1
+        self.tree_reg.clear()
+
+    # ---------------------------------------------------------------------------------
+    # 函数名称：update_tree
+    # 函数功能：生成寄存器树型结构
+    # 函数输入：
+    # 函数输出：
+    # 作   者：jiangyongshui 00256608
+    # 创建时间：
+    # 修改记录：
+    # ---------------------------------------------------------------------------------
+    def update_tree(self):
+        self.tree_reg.clear()
+        self.tree_reg.setColumnCount(1)
+        root = QTreeWidgetItem(self.tree_reg)
+        self.tree_reg.setHeaderLabels([''])
+        root.setText(0, self.box_chip.currentText())
+        child_version = QTreeWidgetItem(root)
+        child_version.setText(0, self.box_version.currentText())
+
+        cursor = self.cursor
+        cursor.execute("SELECT module,reg_name FROM reg where chip='" \
+                       + str(self.box_chip.currentText()) + "' and version='" \
+                       + str(self.box_version.currentText()) + "' ORDER BY id")
+        last_module = ""
+        result_module = cursor.fetchall()
+        for row_module in result_module:
+            if str(last_module) != str(row_module[0]):
+                child_module = QTreeWidgetItem(child_version)
+                child_module.setText(0,row_module[0])
+                last_module = row_module[0]
+
+            child_reg_name = QTreeWidgetItem(child_module)
+            child_reg_name.setText(0,row_module[1])
+
+
+
+    # ---------------------------------------------------------------------------------
+    # 函数名称：tbl_reg_format
+    # 函数功能：寄存器内容显示表格格式设置
+    # 函数输入：
+    # 函数输出：
+    # 作   者：jiangyongshui 00256608
+    # 创建时间：
+    # 修改记录：
+    # ---------------------------------------------------------------------------------
+    def tbl_reg_format(self):
+        self.tbl_reg.setColumnCount(8)
+        self.tbl_reg.setRowCount(1000)
+
+        self.tbl_reg.setHorizontalHeaderLabels(['RegName', \
+                                                'RegAddr', \
+                                                'RegDesc', \
+                                                'FieldName', \
+                                                'Range', \
+                                                'FieldDesc', \
+                                                'Attr', \
+                                                'DefValue' \
+                                                ])
+
+        self.tbl_reg.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.tbl_reg.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tbl_reg.setSelectionMode(QAbstractItemView.SingleSelection)
+        #self.tbl_reg.setSelectionBehavior(QTableWidget.SelectColumns)
+        #self.tbl_reg.setSelectionMode(QTableWidget.SingleSelection)
+        self.tbl_reg.horizontalHeader().setHighlightSections(False)
+        for index in range(self.tbl_reg.columnCount()):
+            headItem = self.tbl_reg.horizontalHeaderItem(index)
+            #headItem.setBackgroundColor(QColor(0,60,10))
+            #headItem.setForeground(QBrush(Qt.gray))
+            headItem.setTextAlignment(Qt.AlignHCenter | Qt.AlignVCenter)
+
+        self.tbl_reg.setColumnWidth(0, 180)
+        self.tbl_reg.setColumnWidth(2, 180)
+        self.tbl_reg.setColumnWidth(3, 120)
+        self.tbl_reg.setColumnWidth(4, 60)
+        self.tbl_reg.setColumnWidth(5, 180)
+        self.tbl_reg.setColumnWidth(6, 60)
+
+    # ---------------------------------------------------------------------------------
+    # 函数名称：tree_reg_itemclicked
+    # 函数功能：树型结构单击事件
+    # 函数输入：
+    # 函数输出：
+    # 作   者：jiangyongshui 00256608
+    # 创建时间：
+    # 修改记录：
+    # ---------------------------------------------------------------------------------
+    def tree_reg_itemclicked(self, item):
+
+        self.tbl_reg.clear()
+        self.tbl_reg_format()
+        if 0 == item.childCount():
+
+            module = item.parent()
+            version = module.parent()
+            chip = version.parent()
+
+            reg_name = item.text(0)
+            moudule = module.text(0)
+            version = version.text(0)
+            chip = chip.text(0)
+
+            self.tbl_reg.clear()
+            self.tbl_reg_format()
+
+            cursor = self.cursor
+            sql = "select reg_name,reg_desc,reg_addr,field_name,field_range,field_attr,field_desc,field_defv from reg_field where chip='" \
+                           + chip + "' and version='" \
+                           + version + "' and module='" \
+                           + moudule + "' and reg_name = '" \
+                           + reg_name + "'"
+
+            cursor.execute(sql)
+
+            result_field = cursor.fetchall()
+            i = 0
+            last_reg_name = ""
+            if 0 != len(result_field):
+                for field in result_field:
+                    reg_name = QTableWidgetItem(field[0])
+                    reg_desc = QTableWidgetItem(field[1])
+                    reg_addr = QTableWidgetItem(field[2])
+                    field_name = QTableWidgetItem(field[3])
+                    field_range = QTableWidgetItem(field[4])
+                    field_attr = QTableWidgetItem(field[5])
+                    field_desc = QTableWidgetItem(field[6])
+                    field_defv = QTableWidgetItem(field[7])
+                    if str(field[0]) != str(last_reg_name):
+                        self.tbl_reg.setItem(i, 0, reg_name)
+                        self.tbl_reg.setItem(i, 1, reg_addr)
+                        self.tbl_reg.setItem(i, 2, reg_desc)
+                        last_reg_name = field[0]
+
+                    self.tbl_reg.setItem(i, 3, field_name)
+                    self.tbl_reg.setItem(i, 4, field_range)
+                    self.tbl_reg.setItem(i, 5, field_desc)
+                    self.tbl_reg.setItem(i, 6, field_attr)
+                    self.tbl_reg.setItem(i, 7, field_defv)
+                    self.tbl_reg_resize()
+                    i = i + 1
+
+            else:
+                self.tbl_reg.setItem(0, 0, QTableWidgetItem("查找寄存器失败"))
+        else:
+            cursor = self.cursor
+            sql = "select reg_name,reg_desc,reg_addr from reg_field where chip='" \
+                           + self.box_chip.currentText() + "' and version='" \
+                           + self.box_version.currentText() + "' and module='" \
+                           + item.text(0) + "' group by reg_name"
+            cursor.execute(sql)
+
+            result_field = cursor.fetchall()
+            i = 0
+            if 0 != len(result_field):
+                for reg in result_field:
+                    reg_name = QTableWidgetItem(reg[0])
+                    reg_desc = QTableWidgetItem(reg[1])
+                    reg_addr = QTableWidgetItem(reg[2])
+                    self.tbl_reg.setItem(i, 0, reg_name)
+                    self.tbl_reg.setItem(i, 1, reg_addr)
+                    self.tbl_reg.setItem(i, 2, reg_desc)
+                    self.tbl_reg.setItem(i, 3, QTableWidgetItem(""))
+                    self.tbl_reg.setItem(i, 4, QTableWidgetItem(""))
+                    self.tbl_reg.setItem(i, 5, QTableWidgetItem(""))
+                    self.tbl_reg.setItem(i, 6, QTableWidgetItem(""))
+                    self.tbl_reg.setItem(i, 7, QTableWidgetItem(""))
+                    i = i + 1
+
+    # ---------------------------------------------------------------------------------
+    # 函数名称：get_reg_by_txt_get_reg
+    # 函数功能：根据输入的地址或名称等信息查询出寄存器域的信息
+    # 函数输入：
+    # 函数输出：
+    # 作   者：jiangyongshui 00256608
+    # 创建时间：
+    # 修改记录：
+    # ---------------------------------------------------------------------------------
+    def get_reg_by_txt_get_reg(self):
+
+        chip = self.box_chip.currentText()
+        version = self.box_version.currentText()
+        reg_name = self.txt_get_reg.text()
+
+        self.tbl_reg.clear()
+        self.tbl_reg_format()
+
+        if "" != chip and "" != version:
+            cursor = self.cursor
+            sql = "SELECT reg_name,reg_desc,reg_addr,field_name,field_range,field_attr,field_desc,field_defv FROM reg_field WHERE chip='" \
+                  + chip + "' and version='" \
+                  + version + "' and (reg_name LIKE '%" \
+                  + reg_name + "%' or reg_addr LIKE '%"\
+                  + reg_name + "%') order by reg_name"
+            cursor.execute(sql)
+
+            result_field = cursor.fetchall()
+            i = 0
+            last_reg_name = ""
+            if 0 != len(result_field):
+                for field in result_field:
+                    reg_name = QTableWidgetItem(field[0])
+                    reg_desc = QTableWidgetItem(field[1])
+                    reg_addr = QTableWidgetItem(field[2])
+                    field_name = QTableWidgetItem(field[3])
+                    field_range = QTableWidgetItem(field[4])
+                    field_attr = QTableWidgetItem(field[5])
+                    field_desc = QTableWidgetItem(field[6])
+                    field_defv = QTableWidgetItem(field[7])
+
+                    if str(field[0]) != str(last_reg_name):
+                        self.tbl_reg.setItem(i, 0, reg_name)
+                        self.tbl_reg.setItem(i, 1, reg_addr)
+                        self.tbl_reg.setItem(i, 2, reg_desc)
+                        last_reg_name = field[0]
+
+                    self.tbl_reg.setItem(i, 3, field_name)
+                    self.tbl_reg.setItem(i, 4, field_range)
+                    self.tbl_reg.setItem(i, 5, field_desc)
+                    self.tbl_reg.setItem(i, 6, field_attr)
+                    self.tbl_reg.setItem(i, 7, field_defv)
+                    self.tbl_reg_resize()
+                    i = i + 1
+            else:
+                QMessageBox.critical(self, "错误提示", "查找寄存器失败", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        else:
+            QMessageBox.critical(self, "错误提示", "芯片或版本为空", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+
+    # ---------------------------------------------------------------------------------
+    # 函数名称：tbl_reg_select
+    # 函数功能：根据寄存器内容表格中选择定位寄存器树型结构的位置
+    # 函数输入：
+    # 函数输出：
+    # 作   者：jiangyongshui 00256608
+    # 创建时间：
+    # 修改记录：
+    # ---------------------------------------------------------------------------------
+    def tbl_reg_select(self):
+        self.tree_reg.collapseAll()
+        cur_reg = self.tbl_reg.item(self.tbl_reg.currentRow(), 0).text()
+        cur_field = self.tbl_reg.item(self.tbl_reg.currentRow(), 3).text()
+
+        cursor = self.cursor
+        sql = "SELECT reg_name,reg_desc,reg_addr,field_name,field_range,field_attr,field_desc,field_defv FROM reg_field WHERE chip='" \
+              + self.box_chip.currentText() + "' and version='" \
+              + self.box_version.currentText() + "' and reg_name='" \
+              + cur_reg + "'"
+        cursor.execute(sql)
+        result_field = cursor.fetchall()
+
+        sign = 0
+        it = self.tree_items()
+        for index, item in enumerate(it):
+            if str(cur_reg) == str(item.text(0)):
+                self.tree_reg.setCurrentItem(item)
+                if "" == cur_field:
+                    sign = 1
+        if 1 == sign:
+            i = self.tbl_reg.currentRow()
+            k = 0
+            if 0 != len(result_field):
+                for field in result_field:
+                    field_name = QTableWidgetItem(field[3])
+                    field_range = QTableWidgetItem(field[4])
+                    field_attr = QTableWidgetItem(field[5])
+                    field_desc = QTableWidgetItem(field[6])
+                    field_defv = QTableWidgetItem(field[7])
+
+                    self.tbl_reg.setItem(i, 3, field_name)
+                    self.tbl_reg.setItem(i, 4, field_range)
+                    self.tbl_reg.setItem(i, 5, field_desc)
+                    self.tbl_reg.setItem(i, 6, field_attr)
+                    self.tbl_reg.setItem(i, 7, field_defv)
+                    self.tbl_reg_resize()
+                    i = i + 1
+                    k = k + 1
+                    if k < len(result_field):
+                        self.tbl_reg.insertRow(i)
+
+
+
+    # ---------------------------------------------------------------------------------
+    # 函数名称：tree_items
+    # 函数功能：获得寄存器树型结构的所有节点值
+    # 函数输入：
+    # 函数输出：
+    # 作   者：jiangyongshui 00256608
+    # 创建时间：
+    # 修改记录：
+    # ---------------------------------------------------------------------------------
+    def tree_items(self):
+        it = QTreeWidgetItemIterator(self.tree_reg)
+        while it.value():
+            yield it.value()
+            it += 1
+
+    # ---------------------------------------------------------------------------------
+    # 函数名称：tbl_reg_resize
+    # 函数功能：寄存器内容表格的行宽和列高自动调整
+    # 函数输入：
+    # 函数输出：
+    # 作   者：jiangyongshui 00256608
+    # 创建时间：
+    # 修改记录：
+    # ---------------------------------------------------------------------------------
+    def tbl_reg_resize(self):
+        self.tbl_reg.resizeColumnsToContents()
+        self.tbl_reg.resizeRowsToContents()
+
+    def menubar_format(self):
+        self.menu_get = self.menubar.addMenu("Main")
+        self.menu_import = self.menubar.addMenu("导入导出")
+        self.menu_import.addAction("导入寄存器...")
+        self.menu_import.addAction("导出寄存器...")
+        self.menu_import.triggered[QAction].connect(self.act_menu_import)
+
+        self.menu_comp = self.menubar.addMenu("寄存器差异分析")
+        self.menu_comp.addAction("寄存器差异分析")
+        self.menu_comp.addAction("导出差异分析结果")
+        self.menu_comp.addAction("确认差异分析结果")
+        self.menu_comp.triggered[QAction].connect(self.act_menu_comp)
+
+        self.menu_dfx = self.menubar.addMenu("离线定位")
+        self.menu_dfx.addAction("离线定位")
+        self.menu_dfx.triggered[QAction].connect(self.act_menu_dfx)
+
+        self.menu_cover = self.menubar.addMenu("寄存器覆盖")
+        self.menu_cover.addAction("寄存器责任田配置")
+        self.menu_cover.addAction("寄存器覆盖策略配置")
+        self.menu_cover.addAction("导入寄存器执行日志")
+        self.menu_cover.addAction("生成寄存器覆盖报表")
+        self.menu_cover.addAction("导出寄存器覆盖报表")
+        self.menu_cover.triggered[QAction].connect(self.act_menu_cover)
+
+        self.menu_about = self.menubar.addMenu("About")
+        self.menu_about.addAction("About...")
+        self.menu_about.triggered[QAction].connect(self.act_about)
+
+        #self.connect(act_menu_import_1, SIGNAL("triggered()"),self.act_menu_import_1)
+        #act_menu_import_1.triggered[QAction].connect(self.act_menu_import_1)
+
+    def act_menu_import(self,qaction):
+        if "导入寄存器..." == str(qaction.text()):
+            self.act_menu_import_reg()
+            QMessageBox.information(self, "提示", "导入寄存器成功", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if "导出寄存器..." == str(qaction.text()):
+            self.act_menu_export_reg()
+
+    def act_menu_comp(self,qaction):
+        if "寄存器差异分析" == str(qaction.text()):
+            self.act_menu_comp_comp()
+            QMessageBox.information(self, "提示", "寄存器差异分析完成", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if "导出差异分析结果" == str(qaction.text()):
+            self.act_menu_comp_export()
+            QMessageBox.information(self, "提示", "导出寄存器差异分析结果成功", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if "确认差异分析结果" == str(qaction.text()):
+            QMessageBox.critical(self, "错误提示", "功能暂未支持", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+
+    def act_menu_dfx(self,qaction):
+        if "离线定位" == str(qaction.text()):
+            QMessageBox.critical(self, "错误提示", "功能暂未支持", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+
+    def act_menu_cover(self,qaction):
+        if "寄存器责任田配置" == str(qaction.text()):
+            QMessageBox.critical(self, "错误提示", "功能暂未支持", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if "寄存器覆盖策略配置" == str(qaction.text()):
+            QMessageBox.critical(self, "错误提示", "功能暂未支持", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if "导入寄存器执行日志" == str(qaction.text()):
+            QMessageBox.critical(self, "错误提示", "功能暂未支持", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if "生成寄存器覆盖报表" == str(qaction.text()):
+            QMessageBox.critical(self, "错误提示", "功能暂未支持", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if "导出寄存器覆盖报表" == str(qaction.text()):
+            QMessageBox.critical(self, "错误提示", "功能暂未支持", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+
+    def act_menu_export_reg(self):
+        QMessageBox.critical(self, "错误提示", "功能暂未支持", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+
+    def act_menu_import_reg(self):  # 输入：选项
+        # 1为默认选中选项目，True/False  列表框是否可编辑。
+        cursor = self.cursor
+        cursor.execute("select chip,version from reg_field group by chip")
+        chip_version = cursor.fetchall()
+        items = []
+        items.append("")
+        if 0 != len(chip_version):
+            for chip in chip_version:
+                items.append(chip[0])
+
+        select_chip, ok_chip = QtWidgets.QInputDialog.getItem(self, "选择芯片信息", "请选择或输入寄存器芯片信息", items, 0, True)
+        if ok_chip:
+            cursor.execute("select version from reg_field where chip='" + str(select_chip) + "' group by version")
+            chip_version = cursor.fetchall()
+            items = []
+            items.append("")
+            if 0 != len(chip_version):
+                for chip in chip_version:
+                    items.append(chip[0])
+
+            select_version, ok_version = QtWidgets.QInputDialog.getItem(self, "选择版本信息", "请选择或输入寄存器版本信息", items, 0, True)
+
+            if ok_version:
+                if "" != select_chip and "" != select_version:
+                    files,filetype  = QFileDialog.getOpenFileNames(self.centralwidget,"多文件选择","./","All Files (*);;Text Files (*.txt)")
+                    for filename in files:
+                        tmp = load_register(select_chip, select_version, filename)
+                else:
+                    QMessageBox.warning(self, "错误提示", "寄存器对应的芯片或版本为空", QMessageBox.Yes|QMessageBox.No,QMessageBox.Yes)
+            else:
+                QMessageBox.critical(self, "错误提示", "未选择寄存器对应的版本信息", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        else:
+            QMessageBox.critical(self, "错误提示", "未选择寄存器对应的芯片信息", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+
+    def act_about(self):
+        about = ""
+        about = about + "版本： V1.0" + "\t\t\n"
+        about = about + "\t导入导出：" + "\t\t\n"
+        about = about + "\t\t导入寄存器...： 已支持" + "\t\t\n"
+        about = about + "\t\t导出寄存器...： 未支持" + "\t\t\n"
+        about = about + "\t寄存器差异分析：" + "\t\t\n"
+        about = about + "\t\t寄存器差异分析： 已支持" + "\t\t\n"
+        about = about + "\t\t导出差异分析结果： 已支持" + "\t\t\n"
+        about = about + "\t\t确认差异分析结果： 未支持" + "\t\t\n"
+        about = about + "\t离线定位：" + "\t\t\n"
+        about = about + "\t\t离线定位： 未支持" + "\t\t\n"
+        about = about + "\t寄存器覆盖：" + "\t\t\n"
+        about = about + "\t\t寄存器责任田配置： 未支持" + "\t\t\n"
+        about = about + "\t\t寄存器覆盖策略配置： 未支持" + "\t\t\n"
+        about = about + "\t\t导入寄存器执行日志： 未支持" + "\t\t\n"
+        about = about + "\t\t生成寄存器覆盖报表： 未支持" + "\t\t\n"
+        about = about + "\t\t导出寄存器覆盖报表： 未支持" + "\t\t\n"
+
+        QMessageBox.about(self,"About", about)
+
+
+
+    def act_menu_comp_comp(self):
+        src_chip = self.box_chip.currentText()
+        src_version = self.box_version.currentText()
+
+        cursor = self.cursor
+        cursor.execute("select chip,version from reg group by chip")
+        chip_version = cursor.fetchall()
+        items = []
+        items.append("")
+        if 0 != len(chip_version):
+            for chip in chip_version:
+                items.append(chip[0])
+
+        dst_chip, ok_chip = QtWidgets.QInputDialog.getItem(self, "选择芯片信息", "请选择寄存器差异分析的目标芯片信息", items, 0, True)
+        if ok_chip:
+            cursor.execute("select version from reg where chip='" + str(dst_chip) + "' group by version")
+            chip_version = cursor.fetchall()
+            items = []
+            items.append("")
+            if 0 != len(chip_version):
+                for chip in chip_version:
+                    items.append(chip[0])
+
+            dst_version, ok_version = QtWidgets.QInputDialog.getItem(self, "选择版本信息", "请选择寄存器差异分析的目标版本信息", items, 0, True)
+
+            if ok_version:
+                if "" != dst_chip and "" != dst_version:
+                    is_exist = is_exist_compare(self.cursor, src_chip, src_version, dst_chip, dst_version)
+
+                    if 1 == is_exist:
+                        reply = QMessageBox.information(self, "提示", "两个版本的差异分析结果已存在，是否重新进行差异分析？", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                        if reply == QMessageBox.Yes:
+                            t = register_compare(self.db, self.cursor, src_chip, src_version, dst_chip, dst_version)
+                    else:
+                        t = register_compare(self.db, self.cursor, src_chip, src_version, dst_chip, dst_version)
+
+                else:
+                    QMessageBox.warning(self, "错误提示", "寄存器差异分析的目标芯片或目标版本为空", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            else:
+                QMessageBox.critical(self, "错误提示", "存器差异分析的目标版本为空", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        else:
+            QMessageBox.critical(self, "错误提示", "存器差异分析的目标芯片为空", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        print("END")
+
+    def act_menu_comp_export(self):
+
+        src_chip = self.box_chip.currentText()
+        src_version = self.box_version.currentText()
+
+        cursor = self.cursor
+        cursor.execute("select chip,version from reg_field group by chip")
+        chip_version = cursor.fetchall()
+        items = []
+        items.append("")
+        if 0 != len(chip_version):
+            for chip in chip_version:
+                items.append(chip[0])
+
+        dst_chip, ok_chip = QtWidgets.QInputDialog.getItem(self, "选择芯片信息", "请选择寄存器分析结果导出的目标芯片信息", items, 0, True)
+        if ok_chip:
+            cursor.execute("select version from reg_field where chip='" + str(dst_chip) + "' group by version")
+            chip_version = cursor.fetchall()
+            items = []
+            items.append("")
+            if 0 != len(chip_version):
+                for chip in chip_version:
+                    items.append(chip[0])
+
+            dst_version, ok_version = QtWidgets.QInputDialog.getItem(self, "选择版本信息", "寄存器分析结果导出的目标版本信息", items, 0, True)
+
+            if ok_version:
+                if "" != dst_chip and "" != dst_version:
+                    is_exist = is_exist_compare(self.cursor, src_chip, src_version, dst_chip, dst_version)
+                    is_compare = 1
+                    if 1 == is_exist:
+                        reply = QMessageBox.information(self, "提示", "存在两个版本的差异分析结果，是否导出？", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+                        if reply == QMessageBox.Yes:
+                            is_compare = 1
+                        else:
+                            is_compare = 0
+                        if 1 == is_compare:
+                            files, ok = QFileDialog.getSaveFileName(self.centralwidget, "文件保存", "./","Excel Files (*.xlsx)")
+                            t = export_compare(self.db, self.cursor, files, src_chip, src_version, dst_chip, dst_version)
+                    else:
+                        QMessageBox.critical(self, "错误提示", "不存在两个版本的差异分析结果", QMessageBox.Yes | QMessageBox.No,QMessageBox.Yes)
+                else:
+                    QMessageBox.warning(self, "错误提示", "寄存器分析结果导出的目标芯片或目标版本为空", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            else:
+                QMessageBox.critical(self, "错误提示", "寄存器分析结果导出的目标版本为空", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        else:
+            QMessageBox.critical(self, "错误提示", "寄存器分析结果导出的目标芯片为空", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
