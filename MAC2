@@ -1,0 +1,62 @@
+EA5800为分布式架构，相比于集中式架构的同类设备，EA5800的MAC地址可以平滑扩容。
+EA5800整个系统作为一个整体进行MAC学习和转发，在出口板进行MAC地址学习，在入口板进行MAC查找和转发。
+ 
+EA5800相比于集中式架构设备的优点如下：
+ 
+	集中式架构：
+−	MAC地址学习与转发集中在主控板上，扩展MAC地址容量需要更换主控板。
+−	初期使用高规格主控板建网成本则太高。
+	分布式架构：
+−	扩容业务板即可扩容MAC地址容量，无须更换主控，系统MAC地址容量线性扩展。
+−	满足用户不同阶段的需求，MAC地址平滑扩容。
+1.1 VLAN
+VLAN（Virtual Local Area Network）即虚拟局域网，是一种通过将局域网内的设备逻辑地而不是物理地划分成一个个网段，从而实现虚拟工作组的技术。VLAN管理可以使运营商灵活的规划业务。
+1.1.1 介绍
+定义
+VLAN（Virtual Local Area Network）即虚拟局域网，是将一个物理的LAN在逻辑上划分成多个广播域（多个VLAN）的通信技术。VLAN内的主机间可以直接通信，而VLAN间的主机不能直接互通。
+目的
+将广播报文限制在一个VLAN内，避免了广播风暴对带宽的浪费。同时由于VLAN间的主机不能直接互通，因此提高了网络安全性。
+例如，同一个写字楼的不同企业客户，若建立各自独立的LAN，企业的网络投资成本很高；若共用写字楼已有的LAN，又会导致企业信息安全无法保证。利用VLAN技术就能解决这个问题。
+图1-1 VLAN应用示意图
+ 
+
+不同企业的用户属于不同的VLAN，各企业客户可以共享LAN设施，同时由于VLAN间的主机不能互通，保证各企业的网络信息安全。
+1.1.2 基本概念
+VLAN产生后的802.1Q帧格式
+IEEE 802.1Q标准对以太帧格式进行了修改，在源MAC地址字段和协议类型字段之间加入4字节的802.1Q Tag，如下图所示。
+图1-2 VLAN产生后的802.1Q帧格式
+ 
+
+802.1Q Tag包含4个字段，其含义如下：
+	Type
+长度为2字节，表示帧类型。取值为0x8100时表示802.1Q Tag帧。如果不支持802.1Q的设备收到这样的帧，会将其丢弃。
+	PRI
+长度为3比特，表示帧的优先级（Priority），取值范围为0～7，值越大优先级越高。网络阻塞时，优先发送优先级高的数据帧。
+	CFI/DEI
+长度为1比特。
+−	CFI表示MAC地址是否是经典格式（Canonical Format Indicator）。CFI为0说明是经典格式，CFI为1表示为非经典格式。用于区分以太网帧、FDDI（Fiber Distributed Digital Interface）帧和令牌环网帧。在以太网中，CFI的值为0。
+−	DEI：DEI（Drop Eligible Indicator）位，在802.1ad协议中表示丢弃优先级，用来标识报文的颜色。
+	VID
+VLAN ID，长度为12比特，表示该帧所属的VLAN。
+PRI、CFI、VID三个字段又被统称为VLAN tag，它是VLAN通信的依据。不含802.1Q Tag的帧又叫Untagged帧。QinQ封装的802.1Q帧有双层802.1Q Tag。它们的帧结构对比如下图所示。
+图1-3 Untagged帧、标准802.1Q帧、QinQ封装的802.1Q帧结构图
+ 
+
+VLAN的类型
+表1-1 VLAN的类型
+VLAN类型	共同点	差异
+Standard VLAN		不同VLAN间的以太网端口相互隔离
+	同一个VLAN内的以太网端口可以互通
+	一个VLAN可以包含多个上行端口	不包括业务虚端口。
+Smart VLAN			一个Smart VLAN中可包含多个业务虚端口。
+	同一个Smart VLAN中的业务虚端口相互隔离。
+一个VLAN可接入多个用户，减少了对VLAN数量的占用。
+MUX VLAN（Multiplex vlan）			一个MUX VLAN只包含一个业务虚端口。
+	不同MUX VLAN间的业务虚端口相互隔离。
+Super VLAN	它是基于三层的VLAN。一个Super VLAN中可包含多个Sub VLAN。Sub VLAN的类型可以为：Smart VLAN、MUX VLAN。通过ARP proxy可实现Sub VLAN的互相通信。各个Sub VLAN统一通过Super VLAN的三层接口实现三层转发业务。
+它是Smart VLAN或MUX VLAN聚合的结果，详细介绍参见9.2.4 VLAN聚合（Super VLAN）。
+
+
+Smart VLAN通过隔离VLAN内的业务虚端口或者用户端口，以限制用户之间的相互访问。
+MUX VLAN将用户业务虚端口或者用户端口划分在不同的VLAN实现用户间的隔离。
+
