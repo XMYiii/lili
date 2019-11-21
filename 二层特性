@@ -1,0 +1,100 @@
+二层转发策略和二层互通特性的参考协议如下：
+DSL Forum TR-101: Migration to Ethernet-Based DSL Aggregation
+
+VLAN特性参考标准和协议
+文档	描述
+IEEE 802.1Q	IEEE standards for Local and metropolitan area networks-Virtual Bridged Local Area Networks
+IEEE 802.1ad	Virtual Bridged Local Area Networks Amendment 4: Provider Bridges
+RFC3069	VLAN Aggregation for Efficient IP Address Allocation
+1.1 二层转发策略
+1.1.1 介绍
+EA5800作为二层网络设备支持报文在二层网络进行透传或转发，传统的二层转发是根据报文的VLAN信息和MAC地址进行转发，即：VLAN＋MAC转发。VLAN＋MAC转发时如果报文的目标MAC地址因动态MAC地址老化机制而失效，会导致系统查找VLAN+MAC失败，报文成为未知单播在VLAN内广播，带来一定的安全问题。此外，VLAN＋MAC转发还存在MAC地址欺骗和攻击带来的安全问题。
+S-VLAN+C-VLAN转发（S+C转发）可以解决上述安全问题。
+S-VLAN+C-VLAN转发是指根据S-VLAN+C-VLAN两层VLAN ID组成二层转发映射关系，基于VLAN进行报文转发，使二层转发不再依赖于MAC地址学习。
+1.1.2 原理描述
+EA5800支持VLAN+MAC转发、S-VLAN+C-VLAN转发以及在此基础上细分出来的VLAN+MAC+CoS和S-VLAN+C-VLAN+CoS转发。
+VLAN+MAC转发
+VLAN+MAC转发是指，报文进入系统时，系统自动学习VLAN、源MAC地址和入端口的对应关系；在向外转发时，根据VLAN和目的MAC，查找对应的出端口，从找到的端口发送出去。
+VLAN+MAC转发机制中，对于广播MAC地址或者未知单播MAC地址，会在VLAN内进行广播，即将报文复制多份，从该VLAN内的每个端口发送一份。
+S-VLAN+C-VLAN转发
+S-VLAN+C-VLAN双层VLAN是对VLAN的扩展。一方面增大了VLAN的表示范围，另一方面往往用S和C表示不同的含义，比如S表示业务，C表示用户。这样，每个S-VLAN+C-VLAN就可以唯一对应一个用户业务，使S-VLAN+C-VLAN转发成为可能。
+S-VLAN+C-VLAN转发是指根据S-VLAN+C-VLAN两层VLAN ID组成二层转发映射关系，就可以完成基于VLAN的转发。S-VLAN+C-VLAN转发分为严格S+C转发和非严格S+C转发。严格S-VLAN+C-VLAN转发表项不需要动态学习，在创建业务流时，系统自动创建静态的转发表项。非严格S+C转发表项在主控板上需要动态学习，在业务板上需要静态配置转发表项。根据转发表项上行报文找到相应的上行口发送，下行报文找到对应的业务虚端口进行发送。
+VLAN+MAC+CoS和S-VLAN+C-VLAN+CoS转发
+通过Service port bundle引入对CoS（Class of Service）的识别，在EA5800原来的VLAN+MAC、S-VLAN+C-VLAN转发基础上细分出VLAN+MAC+CoS、S-VLAN+C-VLAN+CoS等转发策略，解决相同VLAN+MAC和S-VLAN+C-VLAN存在不同业务流的问题，增加业务规划的灵活性。
+此时，二层转发如图9-29所示：
+
+上行方向
+来自同一用户的不同业务流汇聚到一个Service port bundle，EA5800学习业务流的Service port bundle标识，建立Service port bundle表项。然后基于VLAN+MAC或S-VLAN+C-VLAN进行二层报文转发。
+下行方向
+根据VLAN+MAC或S-VLAN+C-VLAN确定唯一的一个用户，再通过查询Service port bundle表项，根据CoS值查找到业务流并进行报文转发。
+Service port bundle相关介绍参见9.4 Service Port Bundle章节。
+1.1.3 配置二层转发策略
+配置二层转发策略是配置VLAN的基础，是保障业务正确转发的重要步骤，在进行业务配置前需要保证VLAN的转发策略已经按照实际规划完成配置。
+前提条件
+	已经创建正确的VLAN ID。
+	为VLAN配置了正确的属性。
+背景信息
+VLAN转发策略是指报文的二层转发机制，包括vlan-connect和vlan-mac。其中，vlan-mac即系统根据报文的VLAN + MAC地址进行转发，vlan-connect即系统根据报文的“S-VLAN + C-VLAN”转发。
+VLAN+MAC+CoS和S-VLAN+C-VLAN+CoS转发只需分别配置VLAN转发策略和Service port bundle，Service port bundle的配置请参见9.4.3 配置Service port bundle章节。
+缺省配置
+VLAN转发策略的缺省配置如表9-25所示。
+表1-1 VLAN转发策略缺省配置
+参数项	缺省值
+VLAN转发策略	VLAN+MAC
+
+操作步骤
+	配置VLAN+MAC转发
+VLAN转发策略有两种配置方式，两者可以二选一：
+−	当只需要为单个VLAN配置转发策略时，建议使用第一种配置方式，步骤简单。
+−	当需要为多个业务模板参数相同的VLAN配置相同的转发策略时，建议使用第二种配置方式通过业务模板批量配置。
+−	方法一
+a.	在全局配置模式下，使用vlan forwarding配置VLAN转发策略。
+−	方法二
+a.	使用vlan service-profile命令创建VLAN业务模板并进入VLAN业务模板模式。
+b.	使用forwarding命令配置VLAN转发策略。
+c.	使用commit命令使模板配置参数生效。必须执行此操作VLAN业务模板相关配置才能生效。
+d.	使用quit命令退出VLAN业务模板模式。
+e.	使用vlan bind service-profile命令为VLAN绑定配置的VLAN业务模板。
+	配置S-VLAN + C-VLAN转发的业务流
+a.	使用vlan命令增加VLAN。
+b.	使用vlan attrib命令修改VLAN的属性为QinQ或Stacking属性。
+c.	使用vlan forwarding或forwarding命令配置VLAN转发策略。
+d.	使用port vlan命令关联上行端口与S-VLAN，C-VLAN。
+e.	使用service-port命令创建业务虚端口。
+----结束
+操作结果
+配置成功后，基于所配VLAN创建业务流，EA5800下用户可以Ping通上层设备。
+任务示例
+举例：配置VLAN 50的转发策略为S+C。
+huawei(config)#vlan forwarding 50 vlan-connect
+举例：配置业务VLAN 65的转发策略采用严格S-VLAN + C-VLAN转发，VLAN 73表示企业VLAN，去使能MAC地址学习功能。
+huawei(config)#vlan 65 smart 
+huawei(config)#vlan attrib 65 stacking 
+huawei(config)#vlan service-profile profile-id 200 
+huawei(config-vlan-srvprof-200)#mac-address learning fabric disable 
+huawei(config-vlan-srvprof-200)#forwarding vlan-connect 
+huawei(config-vlan-srvprof-200)#commit 
+huawei(config-vlan-srvprof-200)#quit 
+huawei(config)#vlan bind service-profile 65 profile-id 200 
+huawei(config)#port vlan 65 inner-vlan-list 73 0/19 0 
+huawei(config)#service-port 100 uplink-port 0/9/0 vlan 65 eth 0/2/1 multi-service user-vlan 73 rx-cttr 10 tx-cttr 10 
+1.1.4 参考标准和协议
+本特性的参考协议如下：
+DSL Forum TR-101: Migration to Ethernet-Based DSL Aggregation
+1.2 二层互通特性
+二层互通特性，能够实现同一EA5800上用户之间的二层数据交换。
+1.2.1 介绍
+部署QinQ业务时要求各用户在二层网络互通，但是同一个EA5800下的用户在二层网络是相互隔离的，这就限制了QinQ业务只能在不同EA5800之间部署。
+另外，同一个EA5800下同IP网段用户进行数据交换需要由上层设备做三层数据转发，要求三层设备支持ARP PROXY，提高了对上层设备的要求。
+二层互通特性可以解决以上问题。开启二层互通功能后同一个EA5800下的用户能够在二层网络进行数据交换。
+1.2.2 原理描述
+OLT支持基于VLAN的二层互通。
+基于VLAN的二层互通
+如图9-30所示，在同一VLAN域中开通接入用户二层互通特性后，在EA5800内部：
+	板间互通：不同单板下的端口之间要能二层互通，如用户1、2、3同用户4、5之间。
+	板内互通：
+−	同一个端口下的不同用户间要能二层互通，如用户1和用户2之间。
+−	同一个单板下的不同端口下的用户要能二层互通，如用户1、2、3之间。
+−	同一个单板下的不同端口下的用户之间要能二层互通，如用户4和用户5之间。
+
+
