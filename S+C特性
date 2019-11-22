@@ -1,0 +1,257 @@
+
+	
+	资料编码	
+		
+ 	
+	MA5600T S+C特性 技术白皮书	 	
+			
+	文档版本	V1.1		
+	发布日期	2011-10-19		
+	
+	
+	华为技术有限公司		
+		
+ 
+版权所有 © 华为技术有限公司 2009。 保留一切权利。
+非经本公司书面许可，任何单位和个人不得擅自摘抄、复制本文档内容的部分或全部，并不得以任何形式传播。
+
+商标声明
+ 和其他华为商标均为华为技术有限公司的商标。
+本文档提及的其他所有商标或注册商标，由各自的所有人拥有。
+
+注意
+您购买的产品、服务或特性等应受华为公司商业合同和条款的约束，本文档中描述的全部或部分产品、服务或特性可能不在您的购买或使用范围之内。除非合同另有约定，华为公司对本文档内容不做任何明示或默示的声明或保证。
+由于产品版本升级或其他原因，本文档内容会不定期进行更新。除非另有约定，本文档仅作为使用指导，本文档中的所有陈述、信息和建议不构成任何明示或暗示的担保。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+华为技术有限公司
+地址：	深圳市龙岗区坂田华为总部办公楼     邮编：518129
+网址：	http://www.huawei.com
+
+客户服务邮箱：	support@huawei.com
+
+客户服务电话：	0755-28560000  4008302118
+客户服务传真：	0755-28560111
+	
+	
+
+目  录
+1 执行摘要/Executive Summary	7
+2 简介/Introduction	8
+2.1 需求分析（Requirements Description）	8
+2.2 解决方案（Solution for S+C）	13
+2.3 S+C转发流程（S+C Implementation Details）	16
+2.4 配置查询S+C特性（S+C Configration Details）	19
+3 推广/Experience	23
+4 结论/Conclution	24
+5 缩略语表/Acronyms and Abbreviations	25
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+修订记录/Change History
+日期	修订版本	描述	作者
+2009-12-1	V1.0	按照最新模版刷新	成磊
+2011-10-19	V1.1	根据版本新增部分内容	李大伟
+
+
+
+
+
+
+资料问题反馈渠道/Problem Feedback
+	您在阅读本资料过程中，发现有任何问题（如错误、表述不清，重要内容遗漏等），或对资料改进有建议等，请及时向邮箱public ZLHOTLINE@notemail.huawei.com反馈；（该邮箱是网络MKTG为收集资料问题专门设立的邮箱，由专人处理，并保证在2个工作日内给出答复；）
+	为使您的意见得到更快速的响应，请您在反馈意见时注意以下几点：
+1.	请保证您的资料是从3MS而非其他渠道获取的；
+2.	请给出资料的准确名称和作者，以便能快速找到资料及责任人；
+3.	请给出有问题的地方在本资料中的位置；（如标识出页码，或拷贝有问题的段落等）
+
+
+
+
+
+
+1 执行摘要/Executive Summary
+本文档主要描述的是MA5600T产品的S+C特性。包括特性需求来源、我司产品的解决方案和开发实现。对S+C特性深入剖析。
+本白皮书主要围绕S+C特性在实际应用中发挥的实际作用以及如何实现两方面。让读者能够理解MA5600T 产品S+C特性的价值。
+
+
+ 
+2 简介/Introduction
+2.1 需求分析（Requirements Description）
+2.1.1 原始需求
+ 
+一、基于VLAN禁止MAC地址学习
+在传统的IP DSLAM设备中，用户报文的转发基于MAC地址学习机制来进行。以UA5000为例，上行报文根据配置的业务虚端口转发到相应的上行VLAN中，同时设备在MAC地址表中记录VLAN+源MAC在某某业务虚端口上这样一条地址信息。下行报文转发时先根据上行VLAN和报文目的MAC地址查找MAC地址表，如果查找到VLAN+目的MAC在某某业务虚端口上，就把报文转发到该业务虚端口；如果查找不到，就按照未知单播报文处理，广播到VLAN内所有的业务虚端口。
+基于这个机制，恶意用户可以伪造报文的源MAC地址，对设备发动攻击。例如，恶意用户可以发送源MAC地址不断变化的报文以耗尽设备MAC地址表，影响正常用户报文的MAC学习和转发；恶意用户可以发送源MAC地址为BRAS设备MAC地址的报文，导致正常用户的报文不能被转发给BRAS，而是被转发到恶意用户；恶意用户可以发送源MAC地址为其他正常用户MAC地址的报文，使本应该转发到其他正常用户的报文被转发到恶意用户。
+虽然DSLAM设备提供了一系列安全特性以防止上述恶意攻击行为，但是并不能完全解决MAC地址攻击的问题。基于安全考虑，客户希望网络中的设备尽量不基于用户报文的内容（包括MAC地址）转发，以彻底规避用户伪造报文内容影响设备的转发。由于CMSAN设备上除了用于承载XDSL用户业务的VLAN之外，还存在用于带内管理的VLAN和用于承载VoIP话音业务的VLAN，这些VLAN仍然需要基于MAC地址学习机制转发报文，而且这些VLAN中报文的MAC地址是可信的，因此客户要求DSLAM设备提供基于VLAN禁止/使能MAC地址学习的功能。
+在VLAN禁止MAC地址学习之后，业务报文如何转发呢？这时，配置业务虚端口除了需要指定用户端的参数框/槽/端口、VPI/VCI之外，还需要指定上行端的参数S-VLAN、C-VLAN。其中，S-VLAN用于标识不同类型的业务，相当于原来的上行VLAN；
+C-VLAN用于标示不同的用户；S-VLAN禁止MAC地址学习。上行报文和以前一样，根据配置的业务虚端口转发，但是将被打上两层VLAN标签，外层标签是S-VLAN，内层标签是C-VLAN。下行报文根据报文的S+C标签进行转发，将报文转发到S+C对应的业务虚端口；如果找不到上行端参数为S+C的业务虚端口，就把报文直接丢弃。显然，在同一个CMSAN上不同业务虚端口的S+C不能相同。由于S+C是运营商配置的，因此在报文转发中完全不需要依赖用户报文的任何内容，彻底解决了用户伪造报文对设备的影响。报文转发如下图。
+
+ 
+二、AMSAN：
+根据客户的网络规划，相同的业务在不同的CMSAN上其S-VLAN不同，即CMSAN上的S-VLAN实际标识“业务＋CMSAN”。在FMSAN上，将从不同CMSAN来的属于相同业务的数据流汇聚到一个新的上行S-VLAN数据流中，即在FMSAN上要实现S+C的切换。至于C-VLAN，要求在不同的C-MSAN上相同业务中的C-VLAN不重叠，在FMSAN上进行S+C的切换时不需要改变C-VLAN。这种只切换外层VLAN的方式，我们简写成S+C<－>S’+ C，S表示CMSAN的上行S-VLAN，S’表示FMSAN的上行S-VLAN。报文转发如下图：
+ 
+由于目前FMSAN设备实现不了S+C切换的功能，近期也无法实现这一功能，于是客户提出了一个AMSAN的设备形态，网络位置介于FMSAN和CMSAN之间。AMSAN汇聚CMSAN的业务，实现S+C切换的功能，然后上行到FMSAN。经过进一步的技术讨论，客户要求AMSAN实现两层VLAN切换功能，即AMSAN不但要完成S-VLAN的切换，也要完成C-VLAN的切换，简写为S+C<－>S’+ C’。这样一来，不同的C-MSAN上相同业务中的C-VLAN就可以重叠了，方便了运营商的配置工作。报文转发如下图：
+ 
+在AMSAN上，进行两层VLAN切换的S’-VLAN禁止MAC地址学习。
+2.1.2 OLT需求
+客户对OLT提出的。原因是要关闭VLAN的MAC地址学习，主要是为了解决如下问题：
+1）OLT主控板MAC地址空间有限（SCUL/SCUB 16K，SCUF/SCUN 32K），不足以学习所有用户的MAC地址（GPON典型应用场景会有约32K至128K用户MAC地址，极限场景如级联很多MxU时，需要更大的MAC地址空间）；
+2）动态MAC的老化，可能导致商业用户的业务中断（对N:1用户，处于安全性考虑，需要丢弃未知单播，而我们的系统目前不能基于VLAN丢弃未知单播，导致商业用户的未知单播报文也被丢弃）。
+这两个问题，在OLT上，对1:1用户（包括商业用户和1:1住宅用户）进行S+C转发；对于N:1用户，基于VLAN使能未知单播丢弃的方式解决；在ONU上，不存在MAC地址空间的问题，仍使用VLAN+MAC转发，同时支持基于VLAN进行配置，对商业用户允许未知单播广播，对住宅用户使能未知单播丢弃。
+2.1.3 DSLAM需求
+客户要求MA5600T DSLAM在进行S+C转发时，开启MAC学习（用MA5600T做DSLAM，不是OLT，所以主控DSLAM MAC空间充足），减小下行广播对背板带宽的浪费。
+考虑前面UA5000和MA5600T V8R5版本实现的GPON S+C特性的移植，本次V8R7版本综合考虑，通过提供命令配置，决定存在S+C业务时，DSLAM是否进行MAC学习。
+2.2 解决方案（Solution for S+C）
+在DSLAM场景S+C转发模式下，系统一般采用xDSL接入方式，用户通过CPE接入网络。根据组网情况分析如下
+ 
+DSLAM S+C转发场景
+而实际运营商网络一般分为三种业务：商业用户、1：1住宅用户、N：1住宅用户。下面就这三种用户展开S+C的详述。
+2.2.1 商业用户
+商业用户又分为两种：TLS商业用户和其他商业用户，TLS商业用户指的是透明组网的二层VPN业务，其他商业用户与1:1的住宅用户组网类似，唯一有可能区别的是带宽和优先级的不同。TLS商业用户的处理后面再详述。
+对于其他商业用户，采用双层VLAN，CPE和DSLAM分别为每个用户添加不同的CVLAN和SVLAN，并确保每个用户的SVLAN和CVLAN组合的唯一性，对于商业用户，要求关闭SVLAN的MAC学习，下行根据S+C转发。
+ 
+商业用户业务模型
+2.2.2 1:1住宅用户
+ 
+1:1住宅用户业务模型
+对于1:1住宅用户，一个用户一个VLAN，采用双层VLAN，在CPE上为每个用户分配一个不同的CVLAN，只允许相应VLAN的报文上行。在DSLAM上，为每个UBP（用户桥接端口。属于研发内部概念） tree的所有1:1住宅用户业务添加一个SVLAN Tag。不同的UBP tree使用不同的SVLAN。
+MA5600T关闭SVLAN的MAC学习，根据S+C转发，对1:1住宅用户，所有CVLAN使用CoS=0。要求CPE将用户报文的CoS设置为0。下行的CoS由delivery point设置为0。说明：这一描述没有体现1:1住宅用户的多业务，我们理解为使用不同的SVLAN（参见N:1住宅用户）。
+2.2.3 N:1住宅用户
+ 
+N:1住宅用户业务模型
+采用单层VLAN。在DSLAM上，为每个UBP tree、每种业务的N:1住宅用户业务分配一个SVLAN。这些VLAN在DSLAM或CPE上添加/剥离。每个UBP（User Bridged Port） tree使用三个SVLAN提供Tri-play业务。
+对于N:1住宅用户，采用SVLAN+MAC进行学习和转发，对N:1住宅用户，要求CPE能够设置CoS，每个SVLAN使用一个CoS值（比如0、3、5）。下行的CoS由delivery point设置。
+2.3 S+C转发流程（S+C Implementation Details）
+对于商业用户和1:1 住宅用户，使用“S+C转发”。为了使业务在CPE上发放的简单和一致，并保证每个SVLAN都有4K满规格CVLAN，推荐各CPE使用相同的CVLAN来标识不同用户的相同业务（如上图从CPE 1到CPE n，所有用户VoIP业务的CVLAN都是10，其他业务亦同）。在xDSL上首先进行CVLAN的切换（根据业务流Tag切换模式参数配置进行，如图中Tag transform部分所示），然后添加SVLAN，最后按照S+C进行转发（这里的CVLAN是xDSL单板切换后的）。
+ 
+此为推荐配置，根据实际情况可以有不同配置，比如不在xDSL单板上进行CVLAN切换，直接使用用户报文CVLAN，但这样必须保证各CPE使用的CVLAN均不同，而且DSLAM上对应的SVLAN无法达到4K CVLAN的满规格。
+上行方向：
+在CPE上行时，一个用户不同CoS优先级的多个业务通过不同CVLAN唯一标识，并映射到同一个VPI/VCI（即同一个UBP）；各个用户使用不同的UBP（即用UBP标识用户，而CVLAN用来标识不同用户的不同业务）。在CPE上添加CVLAN，然后上行至DSLAM。
+在DSLAM上为每种业务建立不同的Smart类型的QinQ或Stacking VLAN（每个UBP tree一个），并在对应xDSL业务单板上创建根据CVLAN区分的业务流（各业务单板S+C表项在添加业务流时静态创建，由主机保证<S, C>唯一，不会动态学习、创建表项，但对于业务板上的非S+C业务流，仍要学习SMAC，创建表项）。
+对于商业用户报文直接添加SVLAN（信任商业用户的CVLAN），拷贝用户优先级至网络侧（信任商业用户的优先级），后转发至LSW；
+对于1：1住宅用户添加SVLAN，同时可以切换CVLAN（目前MA5600T支持修改QinQ或Stacking业务流的CVLAN），并根据配置拷贝用户优先级或替换原优先级，然后转发至LSW。
+DSLAM根据端口学习状态决定是否学习MAC地址，并根据SVLAN+DMAC转发至网络侧。对于查表失败的情况，作为未知单播，先检查是否已超过了未知单播门限，如果超过则直接丢弃，否则在VLAN内广播至网络侧（当系统全局关闭MAC学习时，整个DSLAM关闭未知单播抑制，不做门限检查，直接广播至网络侧）。
+下行方向：
+网络侧报文在DSLAM上根据端口学习状态决定是否学习MAC地址后，根据SVLAN+DMAC转发至业务单板。对于查表失败的情况，作为未知单播，先检查是否已超过了未知单播门限，如果超过则直接丢弃，否则在VLAN内广播至业务单板（当系统全局关闭MAC学习时，整个DSLAM关闭未知单播抑制，不做门限检查，直接广播至网络侧）。
+在业务板上，对于S+C业务流，根据S+C表转发，如果查不到对应业务流就直接丢弃；对于非S+C业务流，根据VLAN+MAC表转发，如果查不到对应业务流则根据未知单播配置丢弃报文或在VLAN内所有业务流上进行广播。一般来说信任网络侧报文优先级，会根据该优先级进行入队及调度，但在出端口方向要还原用户优先级和CVLAN，最后转发至CPE。
+注意：
+(1) 对于商业用户，在MAC学习情况下出现未知单播的可能较少且数量不多。当开启MAC学习时，进行DSLAM未知单播抑制（内部端口及外部端口），并提供对外部端口抑制级别的配置；当关闭MAC学习时，取消所有（内部及外部）DSLAM端口未知单播抑制，仍提供对外部端口抑制级别的配置，但配置失效。
+(2) 不能保证每个商业用户（TLS业务）都有确定的不重复的C-VLAN。一是TLS业务可能不指定C-VLAN（比如单业务或者按EtherType区分多业务，或者按C-VLAN时的“other-all”业务流），二是这些TLS业务可能是untagged报文，打上S-VLAN后也只有一层VLAN。当S-VLAN或S+C不能保证唯一性的时候，不适合采用S+C转发。
+(3) 对于用户开展多业务的情况，在DSLAM上使用不同的SVLAN加以区分（即每个UBP tree的每种业务使用一个SVLAN）。在CPE上，每个用户可以使用同一个CVLAN（并用不同的CoS标识不同业务），也可以使用不同的CVLAN（用CVLAN标识不同业务）。如果使用相同的SVLAN和CVLAN，而仅用CoS区分不同的业务，这种模式不支持S+C转发。
+(4) 对于xDSL上的Autosense业的务、PTM业务、P2P业务（即OPF业务）可以认为是上面业务场景的几种变形。用户通过CPE上行至这几种UBP（包括Autosense Port，PTM Port及P2P Port），业务板逻辑同样根据主机配置静态建立<S, C>表项。报文上行在DSLAM的MAC学习及转发与前述一致。
+(5) 对于xDSL上的PVC Bundle业务，如果要支持S+C转发，在业务单板上需要静态建立<S, C>到PVC-BundleID的表项（其他业务建立的是<S, C>到FlowID的表项）。上行报文除了要保证CoS优先级必须不同外，同时必须保证Bundle内各PVC上的报文必须带有相同的CVLAN。由于主机目前不提供整体配置PVC Bundle业务的CVLAN（在业务板上添加或修改CVLAN），必须由用户组网配置保证。考虑到PVC Bundle业务的特点主要是基于CoS优先级的，暂不要求支持S+C。
+(6) 对于广播报文（广播MAC的报文），业务板上行不会丢弃；下行方向，先根据基于VLAN的广播丢弃开关决定是否丢弃。对于不丢弃的情况，如果是S+C转发，不识别MAC，根据S+C转发或丢弃；如果基于VLAN+MAC转发，则广播（到该VLAN的各业务流）。在主控板上，上下行都根据基于端口（和槽位）配置的广播抑制开关，进行抑制。
+2.4 配置查询S+C特性（S+C Configration Details）
+2.4.1 配置VLAN的转发模式为S+C
+配置命令是：
+huawei(config)#vlan forwarding                                                  
+{ vlanid<U><1,4093> }:10                                                        
+{ forwarding-mode<E><vlan-mac,vlan-connect> }:vlan-connect                      
+                                                                                
+  Command:                                                                      
+          vlan forwarding 10 vlan-connect
+
+用户界面配置VLAN的转发模式的接口与R62一致，支持配置和查询操作。
+VLAN的缺省转发模式是VLAN+MAC转发。支持S+C转发的VLAN自身需要满足如下条件：
+1）VLAN类型必须是Smart VLAN、Mux VLAN，因为这些VLAN是用来接入用户的。不可以是Super VLAN或Standard VLAN。Super VLAN用于三层转发；Standard VLAN用于上行口之间互通或ETH级联，无法实现S+C转发。
+2）如果是Mux VLAN，则仅根据S-VLAN进行转发。
+3）如果是Smart VLAN，common模式时（即N:1 VLAN），不支持S+C转发。作为Sub VLAN时（只有common VLAN可以作为Sub VLAN）也不支持S+C转发。
+4）如果是Smart VLAN，stacking和QinQ模式，支持S+C转发。
+
+除了VLAN自身的属性外，配置S+C转发模式还需要满足如下条件：
+1）VLAN内不能存在业务流。从配置顺序上来说，先配置VLAN及其转发模式，再配置业务流是合理的。另外，S+C转发对业务流的要求较多，存在业务流时进行转发模式的切换会增加系统的复杂度。
+2）VLAN不能启动PPPoE单MAC。PPPoE单MAC是一种实现MAC地址数目及MAC地址安全性的技术，使用该技术则没有必要再采用S+C转发。同时，PPPoE单MAC要求采用VLAN+SessionID转发，它和S+C转发必须互斥。
+3）VLAN不能启动1:1 VMAC。1:1 VMAC是一种隔离用户和运营商网络的MAC地址的安全措施，同时能够限制用户的MAC地址数，以及用MAC地址标识用户；但1:1 VMAC不能有效减少MAC地址数目。1:1 VMAC技术需要结合VLAN+MAC学习和转发才能实现，因此和S+C特性是互斥的。
+4）VLAN不能启动防御MAC spoofing。当启动了S+C转发时，不存在MAC欺骗的问题，无需启动防御MAC spoofing功能；防御MAC spoofing是基于VLAN+MAC学习实现的一种安全手段，如果已经启动，也不支持进行S+C转发。
+5）其他方面，比如防御IP spoofing功能、VLAN三层接口以及基于VLAN IF的三层功能，不影响VLAN的转发模式配置。
+
+需要说明的是，配置VLAN的S+C转发模式时，不影响ETH级联板，该单板仍按VLAN+MAC进行转发。
+2.4.2 配置业务流和S+C转发表项
+配置命令：
+huawei(config)#service-port                                                     
+{ index<U><0,16383>|vlan<K>|desc<K> }:vlan                                      
+{ vlanid<U><1,4093>|aoe<K> }:10                                                 
+{ adsl<K>|shdsl<K>|vdsl<K>|atm<K>|eth<K>|gpon<K> }:adsl                         
+{ frameid/slotid/portid<S><1,15> }:0/3/1                                        
+{ vpi<K>|pvcbundle<K>|rx-cttr<K>|inbound<K>|autosense<K> }:vpi                  
+{ vpi<U><0,255> }:0                                                             
+{ vci<K>|pvcbundle<K>|rx-cttr<K>|inbound<K> }:vci                               
+{ vci<U><32,255> }:35                                                           
+{ single-service<K>|pvcbundle<K>|rx-cttr<K>|inbound<K>|multi-service<K> }:multi-service 
+{ user-vlan<K>|user-encap<K>|user-8021p<K> }:user-vlan                          
+{ other-all<K>|untagged<K>|user-vlanid<U><1,4095>|priority-tagged<K> }:5
+{ rx-cttr<K>|inbound<K> }:rx-cttr                                               
+{ rx-index<U><0,511> }:2                                                        
+{ tx-cttr<K> }:tx-cttr                                                          
+{ tx-index<U><0,511> }:2                                                        
+                                                                                
+  Command:                                                                      
+          service-port vlan 10 adsl 0/3/1 vpi 0 vci 35 multi-service user-vlan 5 rx-cttr 2 tx-cttr 2            
+
+S+C转发是一种可控的转发，S-VLAN、C-VLAN都是规划、配置好的，S+C转发表项也在创建业务流时静态配置好的。说明：如果必要，系统也可以支持S+C的自动学习，但目前看来没有意义，而且不安全（不能保证唯一性，易受到恶意用户攻击），增加了系统的不可控性。
+对于配置为S+C转发模式的VLAN，创建业务流时，在业务板逻辑上配置好转发表项，其形式是“S+C-->Flow”。实现时和VLAN+MAC表项共用空间。由于空间共享，当一块单板上已经学习（或者配置）满VLAN+MAC表项或S+C表项时，可能无法新增S+C表项。此时业务流创建失败。实际应用中，不会出现这些问题，因为一般是预先配置所有业务流，然后才开通用户业务的。同时，可以配置用户的MAC地址学习数避免恶意用户占用过多转发表项资源。
+前面已经指出，支持S+C的VLAN可以是Mux VLAN（任何模式）、stacking模式及QinQ模式的Smart VLAN。
+对于Mux VLAN，只能创建一条业务流。无论是单层或双层Tag，无论是哪种VLAN模式（Common、Stacking、QinQ）或Tag切换规则（default、transparent），也无论是哪种流分类方式，下行只看S-VLAN就可以唯一确定业务流。转发表项为“S-->Flow”（作为“S+C-->Flow”的特殊形式，比如C固定取0）。
+对于Stacking的SmartVLAN，双层VLAN都是DSLAM配置的，需要主机软件保证S+C的唯一性。当业务流是根据C-VLAN或C-VLAN+802.1p或C-VLAN+EtherType分类时，网络侧的C-VLAN（stacking inner VLAN）缺省取自用户侧的C-VLAN；如果用户侧C-VLAN为0（priority-tag）或untagged，或者和其他S+C冲突，系统自动分配一个stacking inner VLAN。同时，系统提供修改stacking inner VLAN的配置接口，修改时也要保证S+C的唯一性。
+对于Stacking的SmartVLAN，当业务流是单业务或者根据EtherType分类时，我们将用户侧报文看作untagged（实际上可能有VLAN Tag，不识别），添加S+C两层Tag。主机软件保证S+C的唯一性，分配一个stacking inner VLAN。实际GPON应用中，不存在用户侧untagged的情况，一般也不会要求OLT为用户报文打上两层Tag。
+对于QinQ的SmartVLAN，仅外层VLAN是DSLAM配置的，为了保证S+C的唯一性，要求业务流是根据C-VLAN或C-VLAN+802.1p或C-VLAN+EtherType进行流分类，并且用户侧C-VLAN必须是确定的1-4095的值。即不能为0（priority-tag）、untagged以及other-all，或者和其他S+C冲突。此时，如果是C-VLAN+802.1p或C-VLAN+EtherType流分类，每个C-VLAN只能创建一条业务流，实用价值不大。
+对于QinQ的SmartVLAN，不支持单业务或者根据EtherType分类的多业务流。
+对于QinQ VLAN，和GEM port级联没有关系；但QinQ的业务流支持配置Tag切换规则。当配置为tag transparent时，直接以C-VLAN作为S-VLAN；转发时，系统只查看外层VLAN，不保证S+C的唯一性。因此QinQ的Smart VLAN，如果是S+C转发模式，则不能配置tag transparent。Mux VLAN不受此影响（Mux VLAN最多只能创建一条业务，而且在建立透传业务时，必须保证SVLAN与CVLAN相同）。
+对于Common或Stacking VLAN，不支持配置Tag切换规则。但当它们位于GEM port级联口上时，类似于QinQ的透传的业务流，直接以C-VLAN作为S-VLAN；转发时，系统只查看外层VLAN，不保证S+C的唯一性。因此Common或Stacking的Smart VLAN，如果是在GEM port级联口上，则不能支持S+C转发。Mux VLAN不受此影响。
+另外，对于Stacking VLAN的业务流，下行S、C的检查是独立于S+C转发模式的；一是VLAN+MAC转发时也需要该检查；二是Mux的Stacking VLAN仅根据一层S-VLAN转发，但下行仍要进行两层Tag检查。
+2.4.3 S+C转发表项的查询
+由于S+C转发都是静态表项，每个表项和一条S+C的业务流对应；希望得到S+C转发表项信息时，查询VLAN和业务流即可，不再添加新的命令。实现上，查询主机软件数据库即可，不需要下发单板进行查询。
+查询VLAN时显示VLAN的转发模式。
+查询业务流的方式包括：ALL；VLAN；单板；端口。命令行上的显示信息包括S-VLAN、C-VLAN，它们即构成S+C转发表项。
+除了查询MAC地址和查询VLAN、业务流的命令之外，为了便于测试和调试诊断，还需要提供查询GPON/xDSL/P2P业务板上S+C转发表项的调试命令。在单板上实现该功能，不需要主机业务模块参与；从主机上，可以通过透明通道查询。
+ 
+3 推广/Experience
+S+C转发解决了网络中的设备尽量不基于用户报文的内容（主要是MAC地址）转发的难题，可以规避用户伪造报文内容影响设备转发处理的问题。同时MA5600T设备上除了用于承载XDSL用户业务的VLAN之外，还存在用于带内管理的VLAN和用于承载VoIP话音业务的VLAN，这些VLAN仍然需要基于MAC地址学习机制转发报文，而且这些VLAN中报文的MAC地址是可信的，因此MA5600T设备提供了基于VLAN禁止/使能MAC地址学习的功能，可以满足运营商的需求。.
+
+ 
+4 结论/Conclution
+S+C转发特性在解决OLT主控板MAC地址空间不够问题和避免使用用户MAC地址转发的安全性方面提供了有效的解决方案。
+
+ 
+5 缩略语表/Acronyms and Abbreviations
+表5-1 缩略语清单
+英文缩写	英文全称	中文全称
+VLAN	Virtual Local Area Network	虚拟局域网
+S+C	S-Tag + C-Tag, S-VLAN + C-VLAN	S-VLAN + C-VLAN 双层VLAN
+OLT	Optical Line Terminal	光线路终端
+ONU	Optical Network Unit	光网络单元
+DSLAM	Digital Subscribe Line Access Multiplexer	数字用户线接入复用器
+FTTB	Fiber To The Building/Block	光纤到楼/街区
+FTTH 	Fiber To The Home	光纤到户
+GPON	Gigabit Passive Optical Network	吉比特无源光网络
+P2P	Point to Point	点到点
+SP	Service Provider	服务提供商
+QoS	Quality of Service	服务质量
+CoS	Class of Service	服务等级
+
