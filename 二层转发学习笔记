@@ -1,0 +1,73 @@
+1、VLAN
+	VLAN（Virtual Local Area Network）即虚拟局域网，是将一个物理的LAN在逻辑上划分成多个广播域（多个VLAN）的通信技术。VLAN内的主机间可以直接通信，而VLAN间的主机不能直接互通。VLAN将广播报文限制在一个VLAN内，避免了广播风暴对带宽的浪费。同时由于VLAN间的主机不能直接互通，因此提高了网络安全性。
+1.1 VLAN的分类
+	VLAN可以分为3种：Standard VLAN、Smart VLAN、MUX VLAN。三者的共性和特性如下表所示：
+VLAN类型	共同点	差异
+Standard VLAN	不同VLAN间的以太网端口相互隔离；同一个VLAN内的以太网端口可以互通；一个VLAN可以包含多个上行端口	不包括业务虚端口
+Smart VLAN		一个Smart VLAN中可包含多个业务虚端口。
+同一个Smart VLAN中的业务虚端口相互隔离。
+一个VLAN可接入多个用户，减少了对VLAN数量的占用。
+MUX VLAN		一个MUX VLAN只包含一个业务虚端口。
+不同MUX VLAN间的业务虚端口相互隔离
+Standard VLAN只能添加实体以太网口，不包括业务虚端口。Smart VLAN通过隔离VLAN内的业务虚端口或者用户端口，以限制用户之间的相互访问。MUX VLAN将用户业务虚端口或者用户端口划分在不同的VLAN实现用户间的隔离。
+1.2 VLAN模式
+	VLAN模式主要可分为common、Stacking、QinQ三种模式。这些模式主要是对二层业务映射而言的，体现为处理VLAN Tag的层数和方式，因此仅对Mux VLAN和Smart VLAN有意义。Common模式表示只看到一层S-VLAN Tag；Stacking模式表示网络侧有两层VLAN Tag：S-Tag和C-Tag；QinQ模式表示对用户的报文进行透传（Transparent LAN Service），而AN节点只负责添加/剥离一层S-Tag。
+属性名称	描述	VLAN内的业务流支持业务的情况差异	透传能力
+Common	Common属性的VLAN只支持单层VLAN。可作为普通的二层VLAN使用，需要用于三层转发时可以为之添加VLAN三层接口。	支持DHCP Option82/DHCP L2 Relay/DHCP L3 Relay/PITP(PPPoE+)/ 防MAC欺骗/防IP欺骗/组播IPTV/ARP proxy等业务。	硬件透传能力一般。业务单板对Common和Stacking VLAN的业务流没有硬件透传的属性，会全局捕获DHCP/PPP/IGMP报文（如果某VLAN使能了相关特性的情况下）。
+Stacking	Stacking属性的VLAN只支持双层VLAN，Stacking VLAN的外层VLAN和内层VLAN标签都是MA5800分配，可应用于上层BRAS设备进行双VLAN认证，为ISP提供批发业务。		
+QinQ	QinQ属性的VLAN支持单层或者多层VLAN，主要应用于透传和专线的场景。如果是支持多层VLAN的场景，QinQ的外层VLAN和内层VLAN可以在MA5800上配置分配（三层VLAN场景：用户侧带一层VLAN，MA5800再添加二层VLAN）。	不支持DHCP Option82/DHCP L2 Relay/DHCP L3 Relay/PITP(PPPoE+)/ 防MAC欺骗/防IP欺骗/组播IPTV/ARP proxy等业务	硬件透传能力强，业务单板对QinQ的业务流有硬件透传的属性。
+1.3 VLAN切换
+	VLAN切换也叫VLAN映射，可以实现用户C-VLAN与运营商S-VLAN之间的相互转换。MA5800支持的VLAN切换策略如下：
+（1）	N：1的切换策略：MA5800对接收到的Untagged、带有一层VLAN tag或带有两层VLAN tag的用户报文切换为指定的一层VLAN tag，并在发给用户时反向VLAN切换还原用户报文的VLAN tag。
+（2）	N：2的切换策略：MA5800对接收到的Untagged、带有一层VLAN tag或带有两层VLAN tag的用户报文切换为指定的两层VLAN tag，并在发给用户时反向VLAN切换还原用户报文的VLAN tag。
+常用的VLAN切换方式如下表：
+ 
+2、业务流
+2.1 定义
+	业务流（Service Flow），也叫业务虚端口（Service Virtual Port），它是通过在物理端口或逻辑端口上根据以太网报文特征进行用户业务流量分类（简称流分类）的结果，也是用户和Access Node之间承载业务的二层逻辑通道（确定了报文的二层转发路径）。业务流是在Access Node上实现各种业务的基础。除了区分业务流量，也是对用户业务最细粒度的划分。可以在其基础上实现差异化的精细化管理，如QoS处理、线路标识和安全策略等。业务流的基本模型如下图：
+ 
+	如上图所示，不同用户的业务（Service flow 1与Service flow 3），或同一用户的不同业务（Service flow 1与Service flow 2）都用不同的业务流承载。
+2.2 业务流类型
+	业务流按照业务形式可以分为面向交换业务流和面向连接业务流。
+	面向交换业务流：从用户接入端口到主交换核心VLAN（也称为业务VLAN或S-VLAN）的二层业务通道。一个S-VLAN内的各个上行口和面向交换业务流可以存在多对多的互通关系。由于用户信息（VPI/VCI等）都在业务单板终结，网络侧仅通过S-VLAN在MA5800中进行交换，故称之为面向交换业务流。其基本模型示意图如下。
+ 
+	面向连接业务流：从用户接入端口或级联端口到网络侧端口的点到点的二层业务通道。一个面向连接业务流可以看作两个端点（源端、目的端）之间的一个透传管道，报文在这管道中透明的转发。在该管道中，不需学习MAC地址。不同的端口可以使用相同的VLAN，互不影响。其基本模型示意图如下。
+ 
+2.3 流分类
+目前，我司DSLAM系统支持的流分类方式包括：单业务（即不分类）、按EtherType分类、按用户VLAN分类、按用户802.1p分类。
+流分类类型	流分类参数	说明
+单业务	1）无(Any)	即一个CTP_ETH，只有一个FP，所有流量都匹配到该FP
+按EtherType流分类	1）PPPoE	即0x8863、0x8864
+	2）IPoE	所有不匹配PPPoE的以太网报文，都认为是IPoE
+按VLAN流分类	1）1-4095	即正常的VLAN Tag
+	2）priority-tagged	即VLAN = 0的Tag，又称为null-tag
+	3）untagged	 
+	4）other-all (any other)	如果配置other-all的流点，该CTP_ETH上未匹配其他流点的所有报文，都匹配该流点。相当于匹配顺序在最后的ALL规则。
+	5）VLAN range	指定VLAN范围，起始、终了VLAN的取值均为1-4095，且终了VLAN应大于起始VLAN。目前仅EPON支持，且对应的CTP_ETH对应整个PON口（而不是LLID）
+按VLAN + P-bits流分类	1）VLAN：1-4095
+     P-bits：0-7	正常的VLAN Tag
+	2）VLAN：priority-tagged
+     P-bits：0-7	VLAN = 0的Tag。此时用户界面只输入P-bits值
+按VLAN + EtherType流分类	1）VLAN：1-4095
+     EtherType：PPPoE；IPoE	正常的VLAN Tag
+	2）VLAN：priority-tagged
+     EtherType：PPPoE；IPoE	VLAN = 0的Tag
+	3）VLAN：untagged
+     EtherType：PPPoE；IPoE	untagged、且匹配EtherType的报文
+按double VLAN流分类	1）outer VLAN：1-4095
+     inner VLAN：1-4095	双层VLAN流分类
+2.4 Service port bundle
+	Service port bundle是一种基于CoS的转发模型，每个Service port bundle对应一个用户的一组业务，每种业务用一个业务流表示，并对应一个CoS优先级值。因此，可以将Service port bundle理解为多条业务流汇聚起来的一束流。
+3、二层转发策略
+3.1 VLAN+MAC/VLAN+MAC+CoS
+VLAN+MAC转发是根据报文的VLAN信息和MAC地址进行转发，即VLAN+MAC转发。VLAN+MAC转发时如果报文的目标MAC地址因动态MAC地址老化机制而失败，会导致系统查找VLAN+MAC失败，报文成为未知单播在VLAN内广播，带来一定的安全问题。此外，VLAN+MAC转发还存在MAC地址欺骗和攻击带来的安全问题等。
+3.2 S-VLAN+C-VLAN转发（S+C转发）/ S-VLAN+C-VLAN+CoS转发
+	S-VLAN+C-VLAN转发是指根据S-VLAN+C-VLAN两层VLAN ID组成二层转发映射关系，基于VLAN进行报文转发，使二层转发不再依赖于MAC地址学习。
+4、数据报文转发流程
+4.1 上行方向：UNI-->OLT-->NNI
+	（1）用户侧（UNI）流量到达OLT的业务板后，进行源MAC学习，更新流表。然后根据设置的流分类规则，进行流分类，对不符合分类规则的报文进行丢弃，符合的报文记录“VLAN+MAC-->业务流”映射表。
+	（2）根据配置的规则，对用户数据进行VLAN切换、QoS处理、CAR处理等，然后将处理后的报文直接发送给主控板；
+	（3）主控板接收到来自业务板的数据报文后，根据转发策略决定是否进行MAC地址学习，然后查找转发表，查找到上行端口后，将数据从该端口转发到NNI（网络侧）。
+4.2 下行方向：NNI-->OLT-->UNI
+	（1）下行报文从NNI（网络侧）进入到主控板后，主控板进行源MAC地址学习后。查找转发表，确定数据该发往哪一块业务板，然后将数据报文发送给业务板；
+	（2）数据报文到达业务板后，根据上行时候记录的“VLAN+MAC-->业务流”映射表，查找对应的业务流，并根据配置进行VLAN Tag切换、QoS处理、CAR处理等。然后根流表确定下行端口，将处理后的数据报文转发到UNI。
