@@ -1,0 +1,334 @@
+5	HIGIG相关
+5.1	基本介绍
+HIGIG+/HIGIG2协议只能在10G或10G以上的端口，HIGIG+/HIGIG2基于xuai端口（4对串行信号）。在使用HIGIG协议连接多个芯片时此协议提供的很多跨芯片的功能，如：trunking、 端口morriring、VLAN成员、单播IP地址管理等。
+HIGIG协议是在2001年在StrataXGS系列的I代（BCM5670 ，BCF5690）引入的，它运行在10G的接口上。HIGIG＋协议是在StrataXGS系列的II代（BCM5675 ，BCF5695）引入的，是对HIGIG模块的头部信息作了简单的修改，是百分之百的兼容上一代的设备的。HIGIG＋只是增加了对12G端口的支持（仍然支持10G），协议部分基本上没有什么改动。HIGIG2协议是在2005年在StrataXGS系列的III代（BCM56580, BCM56700, and BCM56800）引入的。
+5.2	HIGIG TRUNKING
+HIGIG trunking 提供了将多个物理端口捆绑在一起作为级联口。它的配置通过HG_TRUNK_GROUP 和 HG_TRUNK_BITMAP寄存器。HIGIG TRUNKING不支持跨芯片的方式。普通的trunk在指定报文从哪个成员端口发送时需要区分报文类型（已知单播、广播等），而higig trunk指定报文的从哪个成员端口发送是不需要区分报文类型，而使用统一的规则。
+普通情况的处理如下：
+	已知单播报文（L2 switch，L3 route）如果目的是远端设备，报文通过级联端口，并通过MODPORT_MAP表选择级联端口。
+	广播和未知单播报文在VLAN内转发，如果需要每个模块都能学习到MAC地址HIGIG 端口就需要被包含在所有的VALN中。
+	组播报文（L2MC、IPMC）会查找组播表，本地的会根据组播组成员来发送。报文也可能需要送到远端设备，如果此组播地址需要送到远端的设备那么也需要将对应的higig口放入到此group中。
+当以上的步骤完成后，如果报文需要经过HIGIG口，那么就会检测报文去往的HIGIG端口是否是一个trunk group的成员，如果是就会根据HG_TRUNK_GROUP中的RTAG确定报文应当发送至哪个成员端口。根据trunk的分配准则higig的端口bitmap可能会被改写。
+5.3	HIGIG协议
+5.3.1	Higig简介
+Higig协议模块的头部有共12字节（higig2有16字节），模块头部占用了标准以太网8字节（前导码和真开始符总共8字节）前导码(preamble)，和4个字节的帧间隔（IFP）。在higig的头部包含了了报文的outer VLAN信息，并且报文中四字节的vlan tag被删除掉了，2字节的tag控制信息（tag control information TCI），到达目的模块后VLAN信息被重新插入到报文内部。报文中的FCS（CRC）校验在增加或去掉higig模块头部的时候都会重新计算。
+HIGIG模块的头部格式如下图：
+ 
+Higig模块含有一些特殊字段表示报文的开始结束。
+	The K.SOP (0xFB) control character will always be aligned with Lane 0.
+	The K.EOP (0xFD) control character will be aligned depending on the length of HG_Payload.
+	The K.IDLE (0x07) control character will be used to fill the gap between HiGig2 packets or messages.
+5.3.2	Higig协议中的字段信息：（0～7字节的信息格式）
+名称 	详细描述
+START_OF_FRAME (SOF)（SOP）	报文开始标记,位于0字节的0～7bit
+它的值总是0XFB,整个传送都是在xaui口的0通道
+DST_MODID	目地模块ID表示报文需要送往哪个交换芯片去，此项在higig和higig＋中不相同：在higig协议中它长度为6bit，在7字节的0～4bit和9字节的第6bit；higig＋中占7bit除了7字节的0～4bit和9字节的第6bit外，还有1字节的第0bit
+如果报文为L2组播或则L3组播的话7字节的0～4bit表示组播组表的索引的高位。
+SRC_MODID	源模块ID表示报文从哪个交换芯片进入的，此项在higig和higig＋中不相同：在higig协议中它长度为6bit，在4字节的3～7bit和9字节的第7bit；higig＋中占7bit除了4字节的3～7bit和9字节的第7bit外，还有1字节的第1bit
+HDR_EXT_LENGTH	头部扩展长度，现在协议中并未使用，它是在HIGIG+中引入的。位于1字节2～4bit。
+CNG
+	拥赛bit标记，此标记在报文的设备入口处标记上的。1字节的第5bit和7字节的第5bit
+HGI	Higig格式描述：有四个取值00  01  11 未使用
+10：higig头，默认的长度为12字节，扩展长度在HDR_EXT_LENGTH字段中定义。
+位于1字节6～7bit
+VID 	表示VLAN TAG，总长度为16bit占用了2、3两个字节。
+其中2字节的4～7bit和3字节0～7bit表示报文的VLAN ID
+OPCODE	报文的类型,位于4字节0～2bit
+000：cpu的控制帧
+001：已知单播报文
+010：广播或则未知单播（DLF）报文
+011：二层组播报文
+100：三层组播报文
+其余的都作为保留未使用
+SRC_PORT_TGID	源端口或则源trunk group id，位于5字节的0～5bit
+表示报文从哪个端口进入系统的，如果使用TRUNK 128模式的话此字段总是表示源端口号。
+PFM	port filtering mode，位于5字节6～7bit
+用来处理L2组播、L3组播报文
+IPRI	内部优先级，也称为Class of Service(CoS),位于6字节0～2bit，
+用来将优先级映射到COS对列中
+DST_PORT	目的端口号：位于6字节3～7bit，注意目的端口号总共5位但源端口号占6位
+如果报文为L2组播或则L3组播的话表示组播组表的索引的第位。
+HDR_TYPE	模块头部的后四个字节是什么类型的，位于7字节的6～7bit
+00：默认模式，主要提供镜像和trunk信息
+01：分类标记，
+其余的未使用
+	
+
+5.3.3	Higig协议中的字段信息：HDR_Type = 00时（8～11字节的信息格式）
+名称	详细描述
+MIRROR	镜像，位于8字节第0bit
+如果在XGS3模式表示报文位镜像报文
+如果在XGS1/2模式表示报文交换已经完成仅需要镜像
+MIRROR_DONE	位于8字节的第1bit
+在XGS1/2模式下表示镜像已经完成仅需要交换
+MIRROR_ONLY	位于8字节的第2bit
+在XGS1/2模式下表示交换已经完成仅需要镜像
+INGRESS_TAGGED	入口标记：位于8字节的第3bit
+表示报文在进入系统前是否带有VLAN标记
+DST_TGID	目的trunk group id，位于8字节4～6bit
+• [0]: LAG_FAILOVER. Packet is redirected due to LAG failover.
+• [1]: DO_NOT_LEARN. Do not learn the MAC SA for this packet.
+• [2]: DO_NOT_MODIFY. Payload of the packet should not be modified.
+
+DST_T
+	目的trunk，位于8字节的第7bit
+Destination Trunk: Transports the DST_T field from the SL stack tag to the
+HiGig module header.
+
+VC_LABEL	VC_LABEL:位于第9字节的0～3，第10、11字节
+此字段时在higig＋协议才增加的。
+LABEL_PRESENT	标签存在：位于9字节的第4bit
+表示该头部信息包含vc_label
+L3	表示报文时三层交换报文，位于9字节的第5bit
+5.3.4	Higig协议中的字段信息：HDR_Type = 01时（8～11字节的信息格式）
+ 
+
+5.3.5	Higig协议的前8字节
+名称 	详细描述
+K.SOP	报文开始标记,位于0字节的0～7bit
+它的值总是0XFB,整个传送都是在xaui口的0通道
+MCST 
+	用于指示报文是否是组播报文，位于1字节的第4bit
+• 0: Unicast
+• 1: Multicast
+TC[3:0]	报文的Qos：位于1字节的0～3bit
+0000～0111:表示普通报文的不同Qos
+1110：系统控制，用于与cpu间的带内系统的控制管理
+1111：Qos管理，用于流量控制信号
+DST_MODID [7:0] /
+MGID [15:8]	位于2字节0～7bit
+当MCST＝0时：表示报文的目的模块ID
+当MCST＝1时：表示组播组ID的高8位
+DST_PID [7:0] /
+MGID [7:0]
+	位于3字节的0～7bit
+当MCST＝0时：表示报文的目的端口ID
+当MCST＝1时：表示组播组ID的低8位
+SRC_MODID [7:0] 	位于4字节的0～7bit
+表示报文的源模块ID
+SRC_PID [7:0]
+	位于5字节的0～7bit
+报文用的源端口ID
+LBID[7:0] 	位于6字节的0～7bit
+表示负载平衡ID，入口处芯片会得出一个hash索引值，
+DP[1:0]	位于7字节的6~7bit
+Drop Precedence indicates the traffic rate violation status of the
+packet measured by the ingress module:
+• 00: Green
+• 01: Red
+• 10: Reserved
+• 11: Yellow
+PPD_TYPE	包处理描述类型：位于7字节0～2bit
+用来指示后面的8字节的作用
+	
+5.3.6	PPD = 0时higig头部后8字节：
+名称 	详细描述
+DST_T	目的turnk：位于8字节的第7bit
+DST_TGID	目的turnk的group id：位于8字节的4～6bit
+INGRESS_TAGGED	位于8字节的第3bit
+表示报文在进入系统前是否有tag
+MIRROR_ONLY (MO)	位于8字节的第2bit
+表示报文仅需要镜像，不需要转发
+MIRROR_DONE (MD)	位于8字节的第1bit
+表示报文已经镜像已经完成仅需要转发
+MIRROR(M)	位于8字节的第0bit
+此报文是一个镜像报文
+L3	位于9字节的第5bit
+表示此报文是一个需要进行l2路由的报文
+LABEL_PRESENT	位于9字节的第4bit
+表示higig的头部包含有一个VC_LABLE
+VC_LABEL	位于9字节的第0~3bit、10字节、11字节
+表示VC label
+VID	位于12、13字节：
+报文的VLANID: 包括优先级 CFI VID
+PFM	位于14字节的6~7bit
+表示端口过滤模式（port filtering mode），应用于L2组播和L3组播
+0：VLAN内广播
+1：如果命中则按组播组发送，如果miss VLAN内广播
+2：如果命中则按组播组发送，如果miss 丢弃报文
+SRC_T
+	位于14字节的第5bit
+源trunk bit
+PRESERVE_DSCP
+	位于14字节的第4bit
+表示外层IP头部中的DSCP区域不可以被修改
+PRESERVE_DOT1P
+	位于14字节的第3bit
+表示L2头部的CFI区域不可以被修改
+OPCODE
+	位于14字节的第0～2bit
+模块头部的操作码，表示报文的类型
+• 000 = Control frames used for CPU to CPU communications
+• 001 = Unicast packet with destination resolved. The packet
+can be either Layer 2 unicast packet or L3 unicast packet that
+was routed in the ingress chip.
+• 010 = Broadcast or unknown Unicast packet or unknown
+multicast, destined to all members of the VLAN
+• 011 = L2 Multicast packet, destined to all ports of the group
+indicated in the L2MC_INDEX which is overlaid on
+DST_PORT/DST_MODID fields
+• 100 = IP Multicast packet, destined to all ports of the group
+indicated in the IPMC_INDEX which is overlaid on
+DST_PORT/DST_MODID fields
+HDR_EXT_LENGTH	位于14字节的第5～7bit
+模块头部扩展区域的长度
+	
+5.3.7	PPD = 1时higig头部后8字节：
+除第8、9字节表示分类级别外其余的格式与PPD = 0时大体一致，就不再具体列举了。
+5.3.8	PPD = 2时higig头部后8字节：
+名称 	详细描述
+MULTIPOINT	位于8字节的第7bit
+表示报文是发往一个端口还是发送到多个端口
+FWD_TYPE	位于8字节的2~6bit
+表示报文的转发类型，与MULTIPOINT区域的值来共同确定转发类型
+MULTIPOINT ＝ 0 单播
+0：控制报文
+2：L3路由报文
+4：二层单播
+MULTIPOINT ＝ 1 组播（广播）
+2：已知L3组播
+3：未知L3组播
+4：已知L2组播
+5：未知L2组播
+5：广播或则是L2未知单播
+VNI	虚拟网络标识
+中间2bit位于8字节的0～1bit，低8位位于9字节，高2位位于15字节的4～5bit
+DEST_VP\
+MC_INDEX	位于9、10字节：
+如果MULTIPOINT ＝ 0表示目的虚拟端口
+如果MULTIPOINT ＝ 1表示组播索引
+SOURCE_VP	位于12、13字节
+根据SOURCE_TYPE1区域的值表示源虚拟端口或则源物理端口
+MIRROR	位于14字节的7bit
+表示报文是一个镜像copy
+DONOT_MODIFY	位于14字节的6bit
+表示报文不允许修改
+DONOT_LEARN	位于14字节的5bit
+表示报文的地址不允许被学习
+LAG_FAILOVER	位于14字节的4bit
+表示报文在重定向到LAG时失败
+OPCODE	位于14字节的0～2bit
+• 000 = Control frame for CPU-to-CPU communication
+• 001 = Known unicast packet
+• 010 = Broadcast packet: bcast, DLF, unknown multicast
+• 011 = Known L2 multicast
+• 100 = Known L3 multicast
+PRESERVE_DSCP	位于15字节的第3bit
+表示外层IP头部中的DSCP区域不可以被修改
+PRESERVE_DOT1P	位于15字节的第2bit
+表示L2头部的CFI区域不可以被修改
+DEST_TYPE	位于15字节的第1bit
+目的地址类型：当MULTIPOINT = 0
+0： DEST_VP\MC_INDEX 区域表示目的是虚拟端口
+1： DEST_VP\MC_INDEX 区域表示目的是物理端口
+SOURCE_TYPE	位于15字节的第0bit
+源端口的类型：
+0：SOURCE_VP区域表示是虚拟端口
+1：SOURCE_VP区域表示是物理端口
+	
+5.3.9	PPD = 2时higig头部后8字节：
+名称 	详细描述
+PPD3_DATA_CONTAINER
+	位于8、9、10、11字节
+这部分区域的格式根据PPD3 _CONTAINER_TYPE.区域的值来确定
+SOURCE_VP	位于12、13字节
+根据SOURCE_TYPE1区域的值表示源虚拟端口或则源物理端口
+PRESERVE_DSCP
+	位于14字节的第7bit
+表示外层IP头部中的DSCP区域不可以被修改
+PRESERVE_DOT1P
+	位于14字节的第6bit
+表示L2头部的CFI区域不可以被修改
+DONOT_LEARN	位于14字节的5bit
+表示报文的地址不允许被学习
+SOURCE_TYPE	位于14字节的第3bit
+源端口的类型：
+0：SOURCE_VP区域表示是虚拟端口
+1：SOURCE_VP区域表示是物理端口
+OPCODE	位于14字节的0～2bit
+• 000 = Control frame for CPU-to-CPU communication
+• 001 = Known unicast packet
+• 010 = Broadcast packet: bcast, DLF, unknown multicast
+• 011 = Known L2 multicast
+• 100 = Known L3 multicast
+PPD_CONTAINER_TYPE	位于15字节的0～3bit
+表示higig头部的8～11字节的格式
+现在仅有1有效 1：Offload Engine Container
+	
+5.3.10	PPD = 2时在8～11字节的格式
+名称 	详细描述
+CLASSIFICATION_TAG	位于8、9两个字节
+有根据ACL规则产生的
+DEFERRED_DROP	
+VXLT_DONE	位于10字节5~6bit
+表示报文是否通过VLAN_ translation
+• 00 : VLAN Translation was not attempted on this packet
+• 01: VLAN Translation was allowed by the redirect rule, but
+there was no translation to be done (no vxt-related packet
+mods were done)
+• 11: VLAN translation was allowed by the redirect rule, and
+VLAN translation was done
+• 10: Reserved
+DEFERRED_CHG_PKT_PRI	位于10字节4bit
+802.1p的修改被延迟
+NEW_PKT_PRI
+	位于10字节1~3bit
+新的优先级
+DEFERRED_CHG_DSCP	位于10字节0bit
+DSCP的修改被延迟
+NEW_DSCP	位于11字节2~7bit
+新的DSCP
+	
+5.4	HIGIG2 MESSAGES
+Higig2协议提供了带内协议机制，用来进行流量管理和fabric操作。Higig2的message有以下几种：
+	 Congestion Management Protocols (such as link and E2E flow control)
+	 System Resiliency Protocols (such as failover operation)
+	 Database Synchronization Protocols (such as table synchronization)
+	 Component Access Protocols (such as system control and report)
+每个报文message都是16字节，有一个字节的SOM一个字节的CRC校验，所以有效载荷是14字节。从给出的message格式看，只有一个flow control协议、和链路级协议，每看到其它的协议。Higig2 message的传输既可以单独的在higig链路上传送，也可以插入到报文中和报文一起在higig链路上传送
+
+6	VLAN(virtual local area network )
+6.1	VLAN简介：
+BCM的中高端的交换芯片支持4094个VLAN，并支持802.1Q tag 、基于MAC地址的、基于子网、基于协议、基于端口、基于流的VLAN，还支持double TAG。一般的BCM都有四个全局的outer TPID,每个入口都可以指定一个或则多个TPID作为本端口使用的outer tpid。判断一个报文是双层TAG（双层VLAN ）还是单TAG的方式如下：
+	DT：报文12—13字节的内容与入口的4个TPID中的一个相同，并且16—17字节的内容与芯片配置的内部TPID相同。
+	SOT：报文12—13字节的内容与入口的4个TPID中的一个相同，并且16—17字节的内容与芯片配置的内部TPID不相同。
+	SIT：报文12—13字节的内容与入口的4个TPID都不相同，但与芯片配置的内部TPID相同。
+	UNTAG：报文12—13字节的内容与入口的4个TPID都不相同，但与芯片配置的内部TPID相同。
+芯片可以根据报文的VLAN和端口进行过滤，如果设置了端口表中的EN_FILTER区域，那么从此端口进入的报文携带的VLAN ID与此端口所属的VLAN不相同，此报文就会被丢弃掉（如果EN_FILTER区域clear了会怎么样）。如果端口表中的DISABLE_VLAN_CHECKS被设置了则生成树和VLAN 成员检测就不再执行。
+VLAN处理模块在整个系统中的位置,如下图：
+ 
+6.2	VLAN分配
+下图是报文的整个转发流程中对报文的VLAN TAG的处理流程：
+ 
+从上图中可以看出任何类型的报文进入芯片后都会处理为DTAG或则SOT的报文，在出口处还可以处理成任意格式的报文。在入口处有多种方法指定报文的VLAN TAG如端口、子网、协议、mac地址、原来的VLAN、流等。其中基于流的VLAN指定是通过芯片中的VCAP来实现的。
+芯片在使用各种方法指定VLAN TAG时有一定的先后次序，如果前面的命中了优先级高的就按优先级高的处理，优先级低的方法就不起用了。优先级由高到低是VFP(VCAP)、VLAN_XLATE（VLAN/MAC）、mac、子网、协议、端口。其中每个端口的子网、VCAP、VLAN_XLATE方式可以被禁用掉。在VCAP和VLAN_XLATE的方式都没有命中后，如果端口的USE_IVID_AS_OVID区域被设置了，并且报文为SIT类型的报文，报文的IVID作为OVID构造芯片内部使用的报文格式。在前两个方式都没命中的话，随后的两种方式的次序根据端口表中VLAN_PRECEDENCE域来确认。如果此区域被设置先搜索VLAN子网表，再根据基于MAC地址处理；如果此区域被清除先根据基于MAC地址方式处理，再搜索VLAN子网表。随后根据协议，最后根据端口。其流程如下图：
+ 
+在VLAN_XLATE、基于MAC的VLAN、基于子网vlan、基于协议vlan、端口表中都有一个TAG_ACTION_PROFILE_PTR区域用来索引到ING_VLAN_TAG_ACTION_PROFILE表中指定再入口处对报文的VLAN做哪种处理方式，如对VLAN TAG的修改、添加、删除等。
+
+6.2.1	基于流的VLAN
+芯片可以通过VCAP（VLAN Content Aware Processor）模块根据报文的内容为报文指定VLAN TAG，VCAP是芯片中三个CAP中的一个。VCAP模块可以根据报文的端口、group id 、L2、L3、L4的内容，对报文的内部VLAN进行修改、删除、添加，对外部VLAN进行添加、修改等操作，此外还有以下功能。
+	指定报文的的虚拟端口组ID（Source Virtual Port Group ID）来支持GPON的应用
+	修改报文内部外部VLAN优先级
+	指定VRF(Virtual Route Forward)
+	不做VLAN ID的检查
+	禁止学习报文的源MAC地址
+	丢弃报文
+	拷贝报文到CPU
+VCAP使用类似TCAM的规则对报文处理，并且VCAP有两种模式：单宽模式和双宽模式。单宽度模式的关键字是214bit，双宽度模式的关键字是428bit。
+这部分功能的使用与ACL功能类似（三个CAP中的一个）这里不作介绍。
+6.2.2	VLAN TRANSLATION
+每个芯片中包含有两个表的来实现VLAN Translation功能入口处的VLAN转换使用VLAN_XLATE表项，出口处的VLAN转换使用EGR_VLAN_XLATE表项操作。
+
+入口VLAN的转换
+报文在进入端口后根据端口表中的VT_KEY_TYPE域或则是VT_KEY_TYPE2域索引VLAN_XLATE表。如果使用VT_KEY_TYPE查找成功就不在根据VT_KEY_TYPE2查找。
+VT_KEY_TYPE, VT_KEY_TYPE2各种取值的含义
+ 
+
+出口VLAN的转换
+在出口时VLAN的转换使用EGR_VLAN_XLATE处理，查表时也有两种查找方式。如果内部的报文包含有双层VLAN TAG，芯片会根据报文的外部TAG和内部TAG进行第一次查表，如果没有命中那么报文就会根据报文的出口和报文的外层TAG进行查找。
+6.2.3	基于子网的VLAN
+此功能提供了根据报文的源IP地址指定报文的VLAN TAG，这个功能由VLAN_SUBNET和VLAN_SUBNET_DATA两个表共同作用来实现，查表成功后会根据表项中的TAG_ACTION_PROFILE_PTR索引到ING_VLAN_TAG_ACTION_PROFILE表，根据表项的定义确定需要对报文的VLAN作何种操作。在表项中有IP地址也有IP地址的掩码，所以在进行IP地址查找时既可以是全面匹配也可以是部分匹配。
+6.2.4	基于协议的VLAN
+芯片提供了根据VLAN_PROTOCOL表和VLAN_PROTOCOL_DATA表指定报文的VLAN TAG。一般的VLAN_PROTOCOL表有16条entry而，所有的端口都可以共同使用，根据报文命中的VLAN_PROTOCOL和报文的入口就可以索引到VLAN_PROTOCOL_DATA表中的某个entry，根据此entry中的TAG_ACTION_PROFILE_PTR索引到ING_VLAN_TAG_ACTION_PROFILE表，此表中定义了需要对报文的VLAN作什么样的操作。
+6.2.5	基于MAC地址和基于端口的报文
+此功能比较简单就不作介绍。
