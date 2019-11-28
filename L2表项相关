@@ -1,0 +1,185 @@
+目录
+1芯片L2简介	2
+1	四类表项的介绍	2
+1.1	VLAN-based bridging	2
+1.2	另外三种类型的介绍	2
+2	L2表项	2
+2.1	L2_ENTRY TABLE学习	2
+2.3	二层表项溢出	4
+2.4	L2表的状态转移控制	4
+2.1	L2地址老化	5
+2.2	L2地址学习的数目限制	5
+2.3	L2组播entry	6
+2.1	L2 USER ENTRY	6
+2.2	MPLS_STATION	6
+2.3	L2 端口桥（L2 port bridge）	6
+2.4	生成树（SPANNING TREE）	6
+3	L2转发流层介绍	7
+3.1	基本介绍	7
+3.2	单播报文流程	7
+3.2.1	Tag域检查	8
+3.2.2	VLAN TAG的指定	8
+3.2.3	VLAN查找	9
+3.2.4	入口方向过滤	9
+3.2.5	VLAN STG检查	9
+3.2.6	源MAC地址学习	9
+3.2.7	根据目的MAC地址进行转发	10
+3.3	广播与二层组播的二层转发流程	11
+3.3.1	广播	11
+3.3.2	二层组播	11
+4	LINK AGGREGATION (TRUNKING)	12
+4.1	802.3AD (LINK AGGREGATION)	12
+4.2	TRUNK中对非单播报文的处理	13
+4.3	TRUNK MARKING	14
+5	HIGIG相关	14
+5.1	基本介绍	14
+5.2	HIGIG TRUNKING	15
+5.3	HIGIG协议	15
+5.3.1	Higig简介	15
+5.3.2	Higig协议中的字段信息：（0～7字节的信息格式）	16
+5.3.3	Higig协议中的字段信息：HDR_Type = 00时（8～11字节的信息格式）	17
+5.3.4	Higig协议中的字段信息：HDR_Type = 01时（8～11字节的信息格式）	18
+5.3.5	Higig协议的前8字节	18
+5.3.6	PPD = 0时higig头部后8字节：	19
+5.3.7	PPD = 1时higig头部后8字节：	20
+5.3.8	PPD = 2时higig头部后8字节：	20
+5.3.9	PPD = 2时higig头部后8字节：	21
+5.3.10	PPD = 2时在8～11字节的格式	22
+5.4	HIGIG2 MESSAGES	23
+6	VLAN(virtual local area network )	23
+6.1	VLAN简介：	23
+6.2	VLAN分配	24
+6.2.1	基于流的VLAN	25
+6.2.2	VLAN TRANSLATION	26
+6.2.3	基于子网的VLAN	27
+6.2.4	基于协议的VLAN	27
+6.2.5	基于MAC地址和基于端口的报文	28
+
+ 
+1芯片L2简介
+交换芯片的二层转发功能基于芯片的二层表（L2_ENTRY）。芯片中二层转发表项分为四种，VLAN-based bridging、Single-VLAN、Double-VLAN、Virtual Forwarding Instance。这四类其中只有VLAN-based bridging和Virtual Forwarding Instance（VPLS/ MPLS/ PBB/ MIM）可以自学习，而四种表项都可以老化。
+1	四类表项的介绍
+1.1	VLAN-based bridging
+此类型表项学习和查找都是基于报文的MAC地址和outer VLAN ID。如果能查找到表项报文根据表项中的module ID、port ID、TGID（trunk group id ）、VGP(virtual port group)、L3 indication进行转发。DLF、广播报文在VLAN内部进行转发。此种类型是最常用的类型。
+1.2	另外三种类型的介绍
+Single-VLAN表项查找基于outer VLAN ID，Double-VLAN表项的查找基于inner VLAN ID和outer VLAN ID（{OVID , IVID }）。如果能查找到表项报文根据表项中的目的进行转发，若查找表项失败报文丢弃或则送CPU。
+Virtual Forwarding Instance模式表项学习转发基于VFI和MAC地址。
+2	L2表项
+2.1	L2_ENTRY TABLE学习
+芯片提供的二层表项为32K，被分为4K的bucket每个bucket有8个entry。如果dual hashing可用的话二层表项可以被化分为两个逻辑表，每个逻辑表有4K的bucket每个bucket包含四个entry。
+二层表项学习模式有多种（CML），可以通过每个端口的port table进行配置。
+ 
+入口根据MAC_SA查找二层表项如果没有在二层表项中没有查找到则根据CML_FLAGS_NEW来处理MAC地址的学习情况，如果查找到了但表项中的端口信息与入口信息不符者根据CML_FLAGS_MOVE来处理MAC地址的学习。
+能引发MAC地址学习操作的情况有三种：SA未查找到l2_entry有剩余空间、SA未查找到l2_entry没有剩余空间、SA查找到但找到的表项中的模块ID和port id的信息与入口包不相同。
+如果使用软件学习的模式可以设置Pending 和 Copy to CPU：Pending模式是硬件学习MAC地址，但学习到后表项设置为Pending，这种模式下将首包送到CPU，并将此信息记录在L2_MOD_FIFO表中，后续报文在查表时会发现MAC地址项并且是Peding就不再将报文送到CPU了。CPU在收到报文后分析报文信息使用L2_INSTER此表项就真正的学习完成。如果设置了Pending但没有设置Copy to CPU，cpu可以从L2_MOD_FIFO表中获取信息来进行MAC地址的学习。
+
+ 
+2.3	二层表项溢出
+如果有多个mac地址根据芯片的hash算法命中同一个bucket，此bucket就会被填满并溢出。如果出现了二层表项溢出，这时候二层表项中就没又空间存放Pending项，在配置了Copy to cpu每个新MAC地址报文Copy都到CPU，CPU会收到很多多余的报文对CPU也又影响，为解决这个问题芯片提供了包含有两个entry的overflow bucket（此bucket只有一个也就是整个芯片在地址溢出时只能存放两个mac地址）。
+Overflow bucket的使用可以通过寄存器配置，如下图：
+ 
+如果有MAC地址被学习到了Overflow bucket，芯片会给CPU一个中断信号通知CPU。如果Overflow bucket也满了，那么新MAC地址的报文就会源源不断的被送到CPU。
+如果CML设置Copy to CPU不可用，二层表溢出事件就不会通知CPU。但如果设置了记录overflow，那么可以从L2_MOD_FIFO表中获取到相关的信息，不管Overflow bucket是否可用或则是满了overflow的信息都会记录在L2_MOD_FIFO表中。
+2.4	L2表的状态转移控制
+在硬件学习的模式下，L2表中的static entry不会被再学习，如果出现了与static entry相同的（ {OVID , MAC_SA}）的信息，但module 与 port 不同的话报文就会被打上标记后上送CPU。芯片的状态转移分成四类（优先级），芯片上的端口被分配不同的优先级。如果需要状态转移首先比较端口的优先级如果新的端口的优先级高于原来的端口的优先级则L2 entry被更新，否则不更新。
+端口的class的设置通过PORT_CBL_TALBE体现，并且虚拟端口也可以进行CLASS的化分，trunk group id的class 的指定通过TRUNK_CBL_TALBE。PORT_CBL_TALBE和TRUNK_CBL_TALBE的内容用来指向4个CBL_ATTRIBUTE registers中的一个，寄存器的格式如下： 
+ 
+
+2.1	L2地址老化
+在2节中介绍了L2表项有四种（VLAN-based bridging、Single-VLAN、Double-VLAN、Virtual Forwarding Instance），有两种（VLAN-based bridging、Virtual Forwarding Instance）可以自学习，四种都可以老化。四种类型可以通过L2表项中的KEY_TYPE区域来区分，在二层表项中还有HITSA、HITDA（不同芯片中的表项可能不同）用来协助老化处理。
+基于硬件的老化会删除hit bit clear的entry，将hit bit set 的entry 对hit bit清除。芯片支持软件老化并且支持软件清除基于某个端口或某个VLAN的所有entry，软件可以对L2表进行各种操作。L2表项的老化操作寄存器如下：
+ 
+如果老化可用的话L2表中的Pending项目也可以被硬件进行老化，硬件老化Pending entry有两个目的，定时的通知CPU Pending项目被老化掉，将Pending entry占用的空间给清空。如果Pending entry被老化掉，此MAC_SA的报文又被芯片收到，重新插入Pending entry并CPU收到报文的copy。
+2.2	L2地址学习的数目限制
+芯片支持在MAC 地址学习时学习到的数目，它可以基于VLAN 、port 、LAG(trunk group)、 sys、VFI。芯片共支持5个类型的MAC地址数目限制。
+如果报文的MAC_SA由于数目的限制无法插入到L2表中，这个报文会被丢弃并且报文会被COPY到cpu。
+无论L2表项的数目限制是否可用统计L2表项的记数器都会工作。（这部分内容不完整）。
+2.3	L2组播entry
+在L2表中组播地址的查找也通过 {OVID, MAC}，如果命中了L2表，则在表中的L2MC_PRT区域指示了一个L2MC表中的一个entry，在L2MC表中指示了此组播地址需要转发的端口MAP。芯片支持三种转发模式（PFM）。
+ 
+
+2.1	L2 USER ENTRY
+此表项与L2表的结构类似，BDPU的MAC地址被放入到这个表项中，表中的L3 bit 设置为1时，此表项也可用来指定隧道的端点。此表项中的项目不会被老化。
+2.2	MPLS_STATION 
+MPLS_STATION 以VLAN ID 和MAC_DA作为关键字进行查找，如果命中报文就会被送到MPLS隧道进行处理。此表项中的条目不会被老化。
+2.3	L2 端口桥（L2 port bridge）
+此功能是指报文的入口和报文的出口是同一个端口，如果需要使用此功能PORT table中的PORT_BIRDGE区域需要被置1。如果一个端口被作为无线设备的接入点则需要启用此功能。
+2.4	生成树（SPANNING TREE）
+芯片支持多种生成树协议，SPT( 802.1D 一个端口对应一个生成树)、RPT（802.1W 快速生成树）、MPT（802.1s 多生成树）。
+生成树表种的状态位可以进行软修改，通过软件设置生成树中每个端口的状态，生成树的状态有disable, blocking, listening, learning and forwarding。L2表中的静态项不会因设置了生成树的老化时间而老化掉，L2表中的其它表项会根据生成树的老化而老化掉，并且仅有非保留地址可以被学习到。如果检测到MAC地址0x0180c2000000 to 0x0180c2000010 和 0x0180c2000020 to 0x0180c200002F 报文会根据L2_USER_ENTRY table转发给CPU。
+SPT协议是软执行的，硬件只是通过一定的方法来支持协议，具体的协议执行需要软件完成。
+在VLAN表中有个STG(spanning tree group id)区域用来是指示次VLAN 对应的生成树，此区域对应到VLAN_STG table中。 有些芯片的VALN table 、VLAN_STG table入口出口是区分开的。（内容不完整）
+
+3	L2转发流层介绍
+3.1	基本介绍
+二层转发处理流程主要涉及到VLAN/STG与L2两部分。当一个报文进入芯片之后，首先入方向管道（Ingress Pipeline）中的报文解析器（Packet Parser）会对其进行解析，并从报文的前128个字节中提取各种搜索引擎和Content Aware 处理器（与ACL、QOS等的处理相关）所需要的信息，以便后续的处理。经过安全引擎（DoS Check）的处理之后便进入到二层转发处理流程。
+下面按照报文类型和流层次序介绍。
+3.2	单播报文流程
+单播报文的转发流程如下图：
+ 
+3.2.1	Tag域检查
+进入二层转发流程，第一步是判断报文携带tag的情况（可参见VLAN章节），分三种情况：
+1）Tagged（双tag  只有外层tag  只有内层tag）
+2）Untagged（不带tag）
+3）Priority tagged（带优先级tag ，意思是tag域中Vlan ID＝0 ，进芯片后只保留报文的优先级，Vlan ID会被重新设置）
+3.2.2	VLAN TAG的指定
+根据报文的内容或则端口号会为报文指定一个VLAN（可参见VLAN的分配章节），主要对入口处报文的VLAN进行添加、修改、删除、保留等操作。
+3.2.3	VLAN查找
+以上一步获取的Vlan ID作为索引查找VLAN表，找到对应的表项后根据其中的VALID字段来确认该Vlan是否有效，取值为0表示无效，则将报文丢弃或送交CPU处理，取值为1表示有效，则提取对应表项的PORT_BITMAP字段、STG字段和PFM字段，用于后续处理。
+3.2.4	入口方向过滤
+入方向过滤是芯片的一个重要安全特性，可以通过对PORT表中的EN_IFILTER 字段置1来使能、置0来去使能该功能。在使能的情况下进行Vlan成员检查，如果报文的入端口不是报文所带Vlan的成员，就会直接将报文丢弃不再进行后续的处理。
+Vlan成员检查即查看VLAN表的PORT_BITMAP字段，检查报文的入端口是否包含在该Vlan当中。
+3.2.5	VLAN STG检查
+STG（Spanning Tree Group）即生成树群组，VLAN STG状态表示端口在指定Vlan下的生成树状态。需要说明的是，芯片支持生成树（STP）协议，包括IEEE802.1D STP与IEEE802.1s STP两种。其中前者是指只基于端口的单一生成树，而后者则是端口分别在每个VLAN下的生成树。
+以VLAN表中的STG字段作为索引，查找VLAN_STG表，该表的每个表项都包含了所有端口的STG状态。再根据入端口号来获取入端口在该Vlan下的STG状态。主要有四种状态表示是否能对报文进行转发或丢弃，去使能状态（丢弃所有报文包括BPDU）、阻塞状态（所有控制报文或BPDU报文送交CPU处理，其他报文丢弃，不学习二层地址）、学习状态（所有控制报文或BPDU报文送交CPU处理，其他报文丢弃，学习二层地址）、转发状态（所有控制报文或BPDU报文送交CPU处理，其他报文转发）。
+3.2.6	源MAC地址学习
+学习前首先检查报文的源MAC地址是不是合法，对于源MAC不合法的报文是不会进行下面的学习过程的。不合法的MAC地址包括全0的MAC、广播MAC、组播MAC、系统桥MAC、系统三层接口的MAC等。对于源MAC地址合法的报文，根据其源MAC+Vlan查找L2_ENTRY（二层转发表），以确定此报文的MAC地址是否被学习过。若不存在相应表项，表明该报文的源MAC没有被学习过，于是根据PORT表中CML（CPU Managed Learning)字段（各字段的意见可以参见 “L2_ENTRY TABLE学习”章节 ）的设置来决定是否进行学习。若存在相应表项，表明该报文的源MAC已经被学习过了，然后检查对应的端口号是否和报文的入端口一致。如果不一致表明发生了站点转移，即一个报文的MAC地址从一个新的端口被学习到了，这时候处理的方式根据CML和CBL（class based learning）配置来确定，具体的处理可以参见L2表的状态转移控制。
+
+3.2.7	根据目的MAC地址进行转发
+检查报文的目的MAC地址，以确定是单播报文、广播报文还是多播报文，这里介绍的是单播的情况，对于广播和多播的情况会在下面部分进行说明。
+根据目的MAC地址+Vlan查找L2_USER_ENTRY，该表所包含表项的MAC地址是BPDU报文使用的MAC地址或者系统保留的MAC地址（这些保留地址是静态的，不受硬件的老化机制影响）。若在L2_USER_ENTRY中匹配到一条表项，则检查相应表项的BPDU字段。BPDU=0,表明不是一个BPDU报文，则根据MODULE_ID（目的芯片号）和PORT_TGID（目的端口号或聚合组号）得到转发位图，直接对报文进行转发。BPDU=1,表明是一个BPDU报文。于是查看DST_DISCARD字段，置1则将报文丢弃；置0则查看CPU字段。如果CPU字段置1则把报文捕获到CPU处理，置0则在VLAN内广播。注意在端口表中的也有字段设置是否对BPDU做报文丢弃处理。
+若未在L2_USER_ENTRY表中匹配到，则再根据目的MAC地址+Vlan查找L2_ENTRY，即二层转发表。如果在二层转发表中匹配到了，先查看表项的L3置位情况，置1将报文送交三层处理。置0则表明报文走二层转发，于是根据MODULE_ID（目的芯片号）和PORT_TGID（目的端口号或聚合组号）得到转发位图，对报文进行转发。若未匹配到则表明是未知单播，此时报文的转发位图就是报文所带Vlan的成员位图（除去入端口），报文会被转发到Vlan内的所有端口（除入端口以外）。
+3.3	广播与二层组播的二层转发流程
+3.3.1	广播
+广播报文的处理流程与单播报文是一样的，但是在进行了源MAC地址的学习之后，广播报文会被直接转发到Vlan内的所有端口（除入端口以外）。当检查到报文的目的MAC地址是一个广播MAC地址以后，将报文的转发位图取为报文所带Vlan的成员位图（除去报文入端口）。
+3.3.2	二层组播
+由于二层多播报文的处理与VLAN表中的PFM字段息息相关，下面先说明一下PFM字段的含义。PFM（Port Filtering Mode）字段指明了在指定Vlan下对于二层多播报文的过滤模式（在L2组播entry中也有简单的介绍），该字段占2个bit位，各种取值对应的过滤模式如下：
+PFM=0	所有的二层多播报文都在Vlan内的所有端口转发
+PFM=1	二层未知多播在Vlan内的所有端口转发
+PFM=2	丢弃二层未知多播
+二层多播报文同样遵循单播报文的转发流程。不同之处就在于查找L2_ENTRY表的之后的处理。
+如果没有在L2_ENTRY表中匹配到，表明是未知多播，需要根据PFM字段的设置来对报文进行处理。若PFM=2，丢弃所有的未知多播报文；否则将未知多播转发到Vlan内的所有端口（除入端口以外），同理转发位图就是Vlan成员位图（除去入端口）。
+如果在L2_ENRTRY表中匹配到了，表明是已知多播，同样需要根据PFM字段的设置来进行处理。若PFM=0，直接将已知多播转发到Vlan内所有的端口；否则根据L2_ENTRY中匹配表项的L2MC_PTR字段索引到L2MC（二层多播表）。然后根据L2MC表的PORT_BITMAP字段来得到多播报文的转发位图。
+
+
+
+4	LINK AGGREGATION (TRUNKING)
+此功能可以将交换芯片上的多个端口绑定在一起作为一个端口使用，两个设备间互联时可以提高带宽，也可将多余的端口作为备份。
+4.1	802.3AD (LINK AGGREGATION)
+•  Trunk端口的成员端口必须被设置为全双工模式
+•  提供端口的备份功能，如果某个端口失效硬件可以被配置成自动的处理根据PORT_LAG_FAILOVER_SET表项
+•  提供了流量分配功能
+在trunk分流时可以根据MAC_SA、 MAC_DA ，IP_SA ，IP_DA， VLAN， Ether type进行hash来确认。如果两个芯片通过HIGIG方式连接，两个芯片的端口可以放入同一个trunk中。如下图：
+ 
+每个trunk group中所包含的端口可以在TRUNK_BITMPA 表中进行设置。trunk group的设置在TRUNK_GROUP表中，在表中包含一个RTAG区域和8个{MODID，port}区域。其中RTAG区域用来选择报文的哪些部分（例如：MAC_SA、 MAC_DA ，IP_SA ，IP_DA， VLAN， Ether type等）来产生3bit的hash值。此hash值用来在8个{MODID，port}区域中选择决定报文从8个成员端口的哪个端口转发出去，一般如果TRUNK_GROUP表中的TG_SIZE 区域可以不用设置但表中的8个{MODID，port}区域每个都需要配置。表中RTAG中区域的取值在1～6，如果RTAG的值为7则表示HASH值需要根据TG_SIZE进行取模。表项的信息见下图：
+ 
+如果报文在入口处发现出口应该是一个远端设备这时MODPORT_MAP表被用来确定报文通过哪个HIGIG连接发送。
+4.2	TRUNK中对非单播报文的处理
+非单播报文是指广播、L2组播、L3组播、DLF（未知单播，目的查找失败报文），这些报文的端口指定没有办法根据TRUNK_GROUP表完成。对于三层广播报文可以使用（IP_SA, IP_DA）hash的方式，对广播、L3组播、DLF可使用(MAC_SA, MAC_DA)hash的方式。得出的hash值用来指定NOUNCAST_TRUNK_BLOCK_MASK表中的条目。在此表中每种包类型对应了16个entry。如下图：
+ 
+从NOUNCAST_TRUNK_BLOCK_MASK表中获取到的信息是BLOCK_MASK用来指示报文应该发送到哪些端口。对同一TRUNK GROUP 中的端口成员只选择一个端口发送。对于这类报文的处理流层见下图：
+ 
+对于这类的报文在转发时有多个限制，如只能在VLAN中转发、可以在表中查找到的组播有自己的组播组、组播报文还有三种转发模式（PFM）（见3.6节）、此类报文还有系统级的转发bitmap等。（后续再看到对此类报文的限制再增加）
+4.3	TRUNK MARKING
+芯片提供了对于某个端口可以根据源TGID、mac地址、源模块ID/端口对报文进行阻塞的功能。
+在TRUNK_EGR_MASK表中可用通过SOURCE_TRUNK_MAP.TGID来查找相应的entry，在TRUNK_EGR_MASK表中返回一个掩码表示此源TGID不允许发送到的端口。
+根据SRC_MODID和SRC_PORTID如果在ERG_MASK表中命中某个entry话返回一个掩码表示此{SRC_MODID, SRC_PORTID}不允许将报文送出哪些端口。可以用来进行端口隔离类似与低端交换芯片中的端口转发MAP。
+在L2表中有个L2_ENTRY.MAC_BLOCK_INDEX区域可以用来索引MAC_BLOCK_TABLE表，如果命中返回一个掩码表示此MAC地址不允许发送到哪些端口。
+使用{SRC_MODID, RRC_PORTID}作为索引在表SOURCE_TRUNK_MAP表中如果能命中可以得到一个TGID用来指示此端口属于哪个TRUNK GROUP。
+
+
+
+
+
+
+
