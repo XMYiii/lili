@@ -1,0 +1,68 @@
+PPPOE_ProtocolPktProc   ----  PPPOE报文处理主流程
+	PPPOE_ParsePktPhaseProc ----- 处理报文解析流程
+一、处理各特性在报文解析前的特殊处理	
+		PPPOE_ParseRecvPktPhase1Proc ----- 处理各特性在报文解析前的特殊处理, 主要是报文统计
+		    SMAC_BeforeParsePktProc
+				SMAC_InnerBeforeParsePktProc --- 单Mac模块在PPPOE报文解析前的处理,进行报文总数统计以及流程全局变量初始化
+完成功能：
+1.面对连接的业务流不支持smac
+2.综合开关关闭的，不支持smac
+3.来自用户方向的报文，得判断单板是否支持smac
+4.来自网络方向的报文，根据报文的目的mac地址判断用户是否是smac用户
+5.初始化用户索引变量，对应的全局变量是g_usUserIndex，如果是用户侧来的，还需要初始化g_stSmacPppoeRlySessionId
+这里有个疑问：报文统计流级，当前流和64条流是什么关系，g_stPppoePktFpUniStat和g_astPppoeplusPktFpUniStat和g_stPppoePktStat具体的区别
+二、	解析PPPOE报文，获取数据		
+		PPPOE_ParseRecvPktPhase2Proc ------  解析PPPOE报文，获取数据，从软转发接收的报文，从中解析pppoe报文的信息，存储到结构体PPPOE_FWD_INFO_S中，循环解析PPPoE报文TAG，主要是对PPPoE报文的TAG合法性进行校验，比如TAG长度异常，用户配置TAG处理策略等等。一句话，此处只关注报文是否该丢弃。
+			PPPOEPLUS_ParseVendorTagProc	当接收报文中携带vendor Tag时的校验以及处理
+完成功能：	
+1.报文来自网络侧，为有效报文
+2.报文来自用户侧，先获取tag的处理规则，如果不丢弃报文，则进行tag处理，提取ont端口信息
+											 
+			SMAC_ParseTagProc        ------  当接收报文中携带relay session Tag时的解析函数
+完成功能：
+1.面对连接的业务流不支持smac，是连接返回
+2.来自网络方向的报文，根据报文的目的mac地址判断用户是否是smac用户，非smac用户返回
+3.判断综合开关的状态，关闭返回
+4.判断tag类型是否是Relay-SessionID，不是返回
+5.用户方向来的报文，判断其携带的Relay-SessionID的合法性，不合法，报文丢弃，返回。用户方向的报文，如PADI、PADR等可能携带不同的TAG，这里会记录原始的relay session信息，记录到全局变量g_stSmacPppoeRlySessionId里面， PADT报文，不会去记录
+6.来自网络方向的报文，根据relay session判断合法性，不合法就丢弃报文，实际上这里的relay session就是smac用户的索引
+三、处理各特性在报文解析后的特殊处理											   
+		PPPOE_ParseRecvPktPhase3Proc      ------	处理各特性在报文解析后的特殊处理，为了获取FPUNI，报文是否丢弃，透传
+			SMAC_AfterParsePktProc   
+				SMAC_InnerAfterParsePktProc		----SMAC在PPPOE报文解析后的功能处理，主要是为了获取fpuni信息和报文是否丢弃
+					SMAC_GetUserInfoFromPkt    ----从PPPOE解析的信息获取PPPOE SMAC数据，这一步是为了获取用户索引
+						SMAC_GetUserInfoFromUniPkt ----从PPPOE解析的来自用户侧报文信息获取PPPOE SMAC数据
+							SMAC_GetUserInfoPadi ------1）如果是PPPOE_TYPE_PADI报文，则从存储数据的空闲空间中，新增一个用户表项 
+							SMAC_GetUserInfoPadr ------2）如果是PPPOE_TYPE_PADR报文，则根据FPUNI和源mac，获取用户索引
+							SMAC_GetUserIdxFromFpUniAndMac--------3）如果是PPPOE_TYPE_PADT报文，则根据FPUNI和源mac，获取用户索引							
+来自网络的报文信息，通过以下方式获取PPPOE SMAC的索引
+					    SMAC_GetUserIndex  ---1）网络侧的报文，可以根据Relay-SessionID获取用户索引，除了PPPOE_TYPE_PADT报文
+						SMAC_GetUserIndexFromSid  ---2）若无法根据Relay-SessionID获取用户索引，如果报文不是PPPOE_TYPE_PADT报文，直接返错，若是可以通过session id获取用户索引，如果两个都不可以，则返回
+						SMAC_UpdateUserInfoFromNniPkt  ---3）根据报文信息更新数据，其具体功能如下：
+3.1）如果是PPPOE_TYPE_PADO报文，如果用户的pppoe状态是SMAC_PPPOE_WAIT_PADO，则将vbas的mac地址记录到smac用户表中
+3.2）如果是PPPOE_TYPE_PADS报文，如果用户的pppoe状态是SMAC_PPPOE_WAIT_PADS，则先判断用户表中记录的vbas的mac地址和报文中的vbas的mac地址是否一致，如果不一致，返回（这里为何先把smac用户的目的mac地址和一个全零的mac地址比较呢？），根据VLAN+SESSION+BRASMAC+SMAC检查是否存在用户，如果存在则删除此用户（在这里有个疑问，为什么这里还会获取一次用户索引，对应什么样的场景呢，一个sessionid可能对应两个用户的场景？）则将vbas的mac地址和以及session id（此时的session ID已经是有效值了）记录到smac用户表中。
+上面的处理可以获取smac用户的索引，若报文来自网络方向，这是可以根据smac用户表获取FPNUI的信息，所以smac在这里进行接收报文的统计，若报文来自用户侧，则本身就携带了fpuni信息。
+												
+如果不支持上面的smac处理，实际上是综合开关没打开或者用户侧单板不支持smac特性的条件下等，则会有下面的处理												
+----------------------------	udm相关处理（下行方向，报文来自网络方向，无论是面对连接的还是面对交换的，都会在这里处理，都会获得FPUNI，无论是否合法）
+PPPOE_ParseRecvPktPhase3Proc --> L2M_LibIsSCvlan---------1.先判断是否开启了S+C,无论何种单板只要没有开启S+C都会生成UDM表项(如果是面向连接流，这个if分支的代码，其实是走不到的，因此，他的fpuni是在PPPOE_ParseRcvPktFromUDM中获取的)
+如果开启了s+c，先判断是否支持创建SVLAN+CVLAN===>FLOW的反查表，若有反查表，根据s+c，获取flow id，在进一步根据flow id获取FPUNI，报文透传，返回，若过程中不能成功获取FPUNI，也透传，返回													  
+PPPOE_ParseRecvPktPhase3Proc --> PPPOE_ParseRcvPktFromUDM---------如果不支持创建SVLAN+CVLAN===>FLOW的反查表，则从udm模块获取FPUNI，并生成udm表项，只有面向交换的流才需要对UDM进行操作，而面向连接的流是不支持安全特性的。PPPOE_ParseRcvPktFromUDM名字起的有问题，实际上，面对连接的流，当报文从网络侧过来时，实际上是从这个函数这里获取的fpuni，而且是在从udm模块获取数据前，获取到fpuni就返回
+PPPOE_ParseRcvPktFromUDM的实现功能如下：
+1）PPPOEPLUS_GetUserInfoFromUdm ---从udm模块获取数据，首先判断报文中的FPUNI是否有效，若有效，则获取flowid，再获取flow参数，主要获取源端流点分类和索引以及目的端流点分类和索引，从源端流点类型判断是面对连接流还是面对交换流，面对连接流可以直接获取到FPUNI，然后返回，面对交换流，则在udm模块中获取FPUNI。如果这一步不能获取到FPUNI，透传，返回（此处代码的注释----查询UDM表项, 用户不存在, 为防止报文出口为级联口, 此处直接返回，这里的疑问是
+注释的意思是指当报文来自网络侧，且目的不是用户侧，而是设备，级联的情况吗）
+2）PPPOE_UdmPppoePktSnoop -----不是面向连接的流，才是在udm处理，生成udm表项，这个时候报文不透传，这一点用来区分报文的发送方式，依赖udm的报文异步发送。
+这个流程主要步骤如下：
+1.将报文信息以及FPUNI信息，发送到udm组件
+2.udm模块处理接受的信息，获取报文的处理方式以及udm索引以及udm核心数据节点信息，再将这些信息发送回pppoe模块
+3.pppoe模块接收到信息后，更新ETHMAC HASH索引节点，然后进行报文的发送处理
+这里有个疑问：这一块有疑问，已经通过udm表获取FPUNI后，为何还要发送报文信息到UDM模块生成UDM表项，而且udm本来的信息怎么来的							
+----------------------------------------- 如果报文来自用户方向
+FPUNI可以从报文中直接获取，但是不是面向连接流的流，需要进行udm处理
+PPPOE_ParseRecvPktPhase3Proc—>PPPOE_UdmPppoePktSnoop------2.不是面向连接的流，才是在udm处理，从UDM获取CM/CPE标识和CM MAC，生成udm表项，这个时候报文不透传，也报文异步发送								
+-------------------------------------------------	面向连接流的特殊处理，主要是vxlan场景和网络侧到网络侧的流
+PPPOE_ParseRecvPktPhase3Proc----->	L2M_IfVxlanFlowByFpUniId	  1.报文从网络侧来的话，需要做特殊的判断--判断FpUni是否为vxlan类型的流的FpUni，是的话返回
+PPPOE_ParseRecvPktPhase3Proc----->	L2M_GetPeerFpIdByFpId-----> L2M_GetCtpEthFromFpUni---> VETH_GetCtpEthNetRole	  2.报文从网络侧来的话，且是面向连接业务流，根据一个FP获取对端FP，在获取ctpethid，在获得网络角色，若为网络侧，则不丢弃报文，然后返回。这里主要是处理网络侧到网络侧面向连接流场景，这种场景下不能约束PADI/PADR必须从用户侧上来。
+													  
+				
+			
