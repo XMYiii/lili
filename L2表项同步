@@ -1,0 +1,170 @@
+L2_MOD_FIFO的L2表项同步优化
+关键词：表项同步、L2_MOD_FIFO、硬表、软表
+L2_MOD_FIFO
+这个L2_MOD_FIFO表是允许一个便利的用L2_ENTRY table改变和更新的方式通知主处理器128入口的深处。L2_MOD_FIFO表保存L2_ENTRY表的所有改变。当L2_MOD_FIFO充满时CMIC实现一个新的FIFO DMA引擎来自动转储L2_MOD_FIFO的内容到cpu的主存.
+现象、问题描述：主备单板需要表项同步，原有同步机制速度慢，效率低，对上层业务有一定影响。
+
+一、	L2表项结构
+mTCA V2使用了BCM56334交换芯片，表项使用了bucket结构，每个bucket包含8条表项，因此BCM56334有4096个bucket，每个bucket对应一个bucket index，一条MAC地址存放的bucket index是根据MAC+vlanID hash值得到的，同一个bucket中表项是随机存放的，没有一定的顺序，这个硬件上的根据hash存取的结构大幅度提高了效率，避免了遍历查找的低效（可以在这里写一下双hash查找算法）。
+
+二、	当前同步机制存在的问题
+mTCA V2 L2表项同步沿袭了mTCA V1的方案，通过在内存中维护一个 shadow表，比较shadow表（后称 软表）与LSW(局域网交换机)中实际L2表项（后称 硬表），得知上一次检查与本次检查L2表项发送的变化，通过RDP消息（BCM开发的私有协议，RDP消息进行板间可靠的消息同步）将这一变化告知备板，让备板作出相应的操作（删除、添加对应硬表）。
+	SCU使用的为BCM56334交换芯片，其硬表（L2_ENTRY ）有32768条，mTCA V1使用的BCM56302总共有8192条表项，由于BCM56334的表项深度为其4倍，因此V2的同步时间相对于V1会大幅度增加。
+	为了减低系统占用率，将遍历一次表项时间设置为最小3s，每次读取512条并比较，当表项不变化时，处理速度较快，3s的时间大部分为空闲时间，完整的一次比较需读取64次。因此当系统学习到一条表项，其同步时间应为0-3s，平均为1.5s。对于大量表项变化的场景，表项同步机制耗时远远大于3s，主要瓶颈在于RDP消息，RDP是一种可靠的传输协议，发送时，先申请资源，将data发送至远端，待收到远端回复的ack后，释放资源，才会发送下一条。通过实际测量，在linux下，发送一条消息耗时约为4ms，因此在出现N条表项变化时，其发送RDP消息就需耗时N*4 ms，在我们冲20000条源MAC变化的报文后，同步至对板需耗时80s。
+
+三、L2 MOD FIFO机制
+	L2 MOD FIFO能够通过硬件快速得知表项变化，当表项发生变化时，L2 MOD FIFO便会得到一条变化的表项，并能获知具体发生了什么变化，具体结构如下图：
+ 
+	OPERATION:指示表项发生了什么变化
+	BUCKET_INDEX,ENTRY_INDEX:变化表项的在表项中的具体位置
+	L2_ENTRY_DATA:对应的具体表项内容
+	
+	FIFO只有128条，我们通过DMA（直接内存读取）的方式，将上述表项送至内存中，直接读取内存中的表项，通知备板执行相应操作。
+
+四、改进方案及实现
+1、RDP发送消息方式
+方案：
+原有RDP发送为每次携带1条表项，目前我们更新为携带20条表项，提高发送效率，相对于原有机制，时间缩短约为原来1/20。
+实现：
+	原有消息结构为
+typedef struct tagGeswL2SyncInfoStruct
+{
+    	UINT32 ulFlag;
+    	bcm_mac_t aucCpuMac;       /* 发送端CPU MAC地址 */
+    	bcm_l2_addr_t strL2Addr;      /* l2表项结构 */  
+}GESW_L2_SYNC_INFO_STRU;
+实际发送结构利用上面结构，新增结构体用于发送消息，并初始化了一个全局的结构体：
+typedef struct tagGeswL2SyncInfo10Struct
+{
+  	    UINT32 count;              /* 本次消息同步L2表项数目*/
+    	GESW_L2_SYNC_INFO_STRU L2sync[20];     
+}GESW_L2_SYNC_INFO_20STRU;
+	发送流程如下：
+ 
+	另外，在每次比较完512条后，我们都会调用接口发送一次RDP消息，即使全局结构中没有20条。
+2、FIFO处理方式
+方案：
+	在内存中分配了32768深度的空间， FIFO中会通过DMA（直接内存读取）送至内存中，读取内存中信息根据operation发送相应RDP消息至对端。
+
+实现：
+	3秒查询与中断二者结合的方式。
+ 
+	当有L2发送变化时，会产生中断，直至所有变化信息处理完毕后，再打开中断，避免频繁产生中断。
+
+AUX_ARB_CONTROL寄存器用于禁止使能对应操作是否产生中断。
+ 
+在我们的应用中我们禁止了PPA_DELETE，以及AGE两项，因为PPA_DELETE在目前系统中，发生在网线插拔的时候，将端口对应的表项全部删除，因此我们在检测到端口拔出时，可以调用by port 或者by turnk的模式将表项删除，而不需要根据FIFO中一条条处理。 
+AGE老化的场景在普通场景下不会出现，在异常场景下，表项同步也没有迫切性，因此可以交由软表同步处理。 
+
+五、优化中遇到的问题及解决方案
+问题1、快速插拔出现删除表项失败的现象
+出现场景：
+用tesgine从SCU面板网口冲入20000条变化源MAC的报文，速度为20000pps，快速插拔（待link灯亮）面板冲包的网线，系统调用bcm_l2_addr_delete删除表项接口时出现失败的问题。
+降低冲包速度或者减少变化源MAC该问题都不会出现。
+分析过程：
+1）函数返回值为-11，表示错误，但并不知错误类型，检查调用函数，内部调用关系如下
+bcm_l2_addr_delete
+soc_mem_delete_return_old
+soc_mem_generic_delete
+soc_schan_op
+soc_schan_op函数为S-Channel发送消息函数，通过该函数下发具体操作消息至LSW(bcm56334)，当该函数返回错误值-11时，其回应类型为response->type 为8，非定义类型，正常定义类型如下
+
+ 
+
+  此时检查异常是读取的CMIC_SCHAN_CTRL为0x20002
+ 
+ 
+下发至的消息已经处理，但是没有completeed，上述解释为hardware resource limitation。
+	2）一次实验发现了问题根因
+为了检查内存空间中32768条表项变化信息满后，能否继续学习到新的MAC的验证使用中，修改程序，不处理FIFO信息，多次插拔网线后，表项不会再发送变化，新来的表项将不会被学习，通过调用bcm命令行中添加删除表项均失败。
+联系到该问题场景，在大量源MAC变化场景，快速插拔网线会会导致表项添加删除等挫折，会是内存空间中缓存迅速溢满，导致无法进行添加删除等操作。
+	问题的本质原因是由于针对L2 MOD处理中发送消息速度低，开始初始时会将消息送至消息池中，当消息池满后，需等待消息池资源，因此导致来不及处理。
+
+修改方案：消息池大小为1024单元，理论最大可以暂存20480（1024单元*20）条表项变化信息，而1024单元要发送完毕需 1024*4ms才能发送完成，因此当消息池中剩余资源较小时，即丢弃该条信息，交由软表去做同步处理。这样不会导致内存中L2 MOD信息不满。
+
+问题2、插上网线40s出现表项学习表项异常删除的问题
+问题现象：拔除网线开始计时，再次插上，40s后出现端口表项被清除的问题，40s过后学习到的表项不会被这样异常删除。
+
+分析过程：
+	1）40s删除的问题，存在与系统中的工作队列，该工作队列记录网口拔除，并与40s后根据当前的trunk与port状态，删除trunk已经不存在的对应表项以及端口link down对应的port表项。程序中会对当前的实际状态去判断是否删除，问题中，我们实际网口是link up，且trunk是存在的，但也出现了被删除的现象。
+	2）分析代码，队列处理函数l2x_del_wq_func，每次处理所有的面板turnk以及port，并不是插拔网线触发的对应端口以及所属turnk。处理程序中会删除对应表项以及相应的软表。判断删除软表当前by port or trunk 是根据工作队列传入结构中skey去区别，判断删除软表 by port or trunk 是根据传入结构中isTrunk去区别。检查发现处理所有面板trunk以及port的过程中，skey以及isTrunk没有重新赋值，由传入时决定，导致处理如果isTrunk =1，当处理port端口表项时仍然当作是turnk去处理，此时TGID(Trunk ID)默认等于0，导致turnk 0表项异常被删除，同时，skey等于6（SOC_L2X_TRUNK_DEL）处理软表时trunk 0也会被异常删除。
+修改方案：处理trunk时将skey = SOC_L2X_TRUNK_DEL，isTrunk = 1；处理port时将skey = SOC_L2X_PORTMOD_DEL，isTrunk = 0。
+
+问题2、FIFO同步一次处理不完，总是少几百条，该部分由后续的软表同步完成。
+问题现象:通过tesgine冲入20000条不同源MAC的表项，速度为20000pps，检查对板L2表项数目，发现L2 MOD处理完毕后，对板表项小于20000条，概率下相差几百条，待软表处理时才会完全同步。
+
+分析过程:
+1、	FIFO同步与软表同步的互斥机制
+ 
+FIFO的同步与软表同步处理是互斥的，二者不同时执行。
+
+2、	根据我们的实际场景，当冲入20000条表项，进入FIFO处理，获取到信号量A后，进入循环处理程序，而此时软表同步的进程，在读取到512条表项后，等待获取信号量，待FIFO处理完后软表进行处理。我们分析一个具体的bucket，软表读取512条表项时，某个bucket为如下结构（红色为有效表项），有两条有效表项：
+A		C					
+而在等待获取信号量这段时间，硬表又学习到了新的表项，因此当前的硬表为如下结构
+A	B	C	D	E	F		
+此时由于FIFO处理变化的表项，软表与当前硬表保持一致为如下结构（软表蓝色有效）
+A	B	C	D	E	F		
+而软表处理进程在FIFO处理完成后，会用前一时刻读取的硬表与当前最新的软表去比较，发现软表中有B,D,E,F，而硬表中没有，因此会删除软表并发送RDP消息至对板删除表项。当软表同步再次执行到次bucket时，读取到最新的硬表，发送RDP添加消息，此时完成同步。
+由于上述原因，导致部分表项较长时间长能同步。
+
+3、	检查FIFO的处理过程
+当通过tesgine冲入20000个变化源MAC的表项时，速度为20000pps，检查发现，FIFO处理过程中某一时刻，由于CPU处理速度快，缓存中条目被处理完毕，会释放信号量，重新开启中断再次处理，因此在释放信号量的时候，会导致2中的问题。使FIFO同步到对板的表项有多条被删除。
+
+修改方案：将软表同步获取信号量放置在读取512条表项前获取信号量。
+
+六、结论、解决方案及效果
+	通过上述机制，大幅度提高了L2表项同步的效率，本优化方案是根据当前项目情况，保留原有机制，改动较小的一个适中的方案。通过修改，效果还是比较明显的，测试结果如下：
+1、	少量MAC变化场景实现零丢包
+ 
+TSG：tesgine的缩写，可以实现发包
+DPU：Dispatch Unit；消息转发单元
+未知单播：简单理解，是对于接收报文的设备而言的，收到报文，能查到这个报文后续的转发路径，就是正常的单播报文，如果在设备上查不到mac表，对于设备，这个是未知的，所以叫未知单播报文，需要未知单播转广播发送。 所以想让报文走未知单播流程，可以人为的去清理设备上的mac表。
+在如上述场景下，上面的SCU由于不能计时同步表项，导致下面SCU当报文为未知单播，对其限速，丢包验证。
+原有机制同步一轮耗时3秒，因此平均同步时间约为1.5秒，构造单播ARP报文测试结果如下
+ 
+
+改进后，测试结果如下
+ 
+由于同步较快，丢包为0
+
+2、	大量可变MAC场景
+冲入20000条可变MAC，添加标志计时，原有同步时间约为80秒，优化消息结构后，同步时间约为5秒。
+ 
+1 表项同步的原理
+ 
+为了使交换网7、8槽两块单板L2表项一致，引入交换网表项同步机制。在同一块SCU上存在 L2m硬表和L2 shadow软表两套表，大小一样，共计8192条表项。交换芯片硬件从某个物理端口学习到L2表项后存放于硬表（L2_ENTRY Table）中，为了让对板LSW的硬表中也包含该条表项，本板必须找到哪几条硬表是新学到的，并将新学到的硬件表项封装到L2同步消息中，以发消息的方式通知对板去添加该条表项。对板接收到本板的添加消息则将该条表项加入L2_ENTRY Table中，L2 shadow软表同步操作。同样地，如果本板硬表删除了一些表项，那么本板必须找到哪几条硬表被删除了，并将被删除的硬件表项封装到L2同步消息中，以发消息的方式通知对板去删除该条表项。对板接收到本板的删除消息则将该条表项从L2_ENTRY Table中删除，L2 shadow软表同步操作。
+交换网起了一个bcmL2X.0任务用于表项同步，_soc_l2x_thread（），该任务运行前，需要先指定同步完成8192条表项需要搬移的次数chunk_count=16次，那么每次需要同步表项的大小即为chunk_size=8192/16=512条；同步任务每3s内共搬移16次，完成8192条表现扫描，每次从硬表拷贝512条表项到内存，循环调用_soc_l2x_sync_bucket（）函数与shadow软表进行比较；_soc_l2x_sync_bucket函数每调用一次完成一个硬件bucket（slot0 ~ slot7共8条表项）的比较同步任务，比较过程中，硬件bucket中的每一条表项将同shadow bucket中的8条软表进行遍历比较，在比较前需要忽略HITDAf、HITSAf、ODD_PARITYf域，即如果硬表与软表在以上五项中存在差异则不认为软、硬表不一致。如果硬表存在而软表不存在，则通过soc_l2x_callback执行表项添加回调，向对板发送表项添加消息，相反地如果硬表不存在而软表存在，则通过soc_l2x_callback执行表项删除回调，向对板发送表项删除消息，完成上述操作后判断软、硬bucket桶是否完全一致，如果不完全一致则调用sal_memcpy将硬bucket完全覆盖软bucket。
+7、8槽单板中，当其中一侧某个端口硬表项发生变化后，则本板的bcmL2X.0任务在循环遍历扫描，在这个过程中该端口硬表的变化就会被发现，然后本板向对板发送L2表项同步消息，对板接收到消息后做相应的添加或删除操作。
+循环任务中会循环读取当前硬表总数，如果硬表总数大于6000条或存在某个bucket桶的8个子项被装满，则L2表项老化会开启，老化时间设定为300秒，当总表项条数少于4000并且bucket占用量小于等于7时，表项老化将被关闭。
+2	soc_l2x_start
+该函数的主要作用是初始化L2软表，启动L2x线程，线程的名称为bcmL2X.0，优先级为50，对应的函数为_soc_l2x_thread。每隔3s进行一次L2表项同步。在_soc_l2x_thread函数里
+2.1 _soc_l2x_thread
+（1）	定义l2x_data[unit].l2mem为L2Xm，即L2_ENTRY Table。
+（2）	定义表项条数index_count为8192，搬移次数chunk_count=16，每次搬移表项大小为chunk_size= index_count / chunk_count=512条。
+（3）	给软表shadow_tab申请空间，给搬移表项chunk_buf申请空间，定义delete_map、chunk_delete_map。
+（4）	shadow_tab和delete_map清零。进入while循环，调用soc_mem_read_range从l2x_data[unit].l2mem中读取512个表项，存到chunk_buf中。将delete_map赋值给chunk_delete_map，然后清空delete_map。如果硬表总数大于6000条或存在某个bucket桶的8个子项被装满，则L2表项老化会开启，老化时间设定为300秒，当总表项条数少于4000并且bucket占用量小于等于7时，表项老化将被关闭。调用_soc_l2x_sync_bucket来循环比较chunk_buf中的512条硬表和软表shadow_tab，每次比较8条表项。
+（5）	在_soc_l2x_sync_bucket中。取硬件bucket的地址赋给old_p，然后设置一个8次的for循环，在这个循环里，取shadow表项的地址赋给new_p。如果硬件表项和shadow表项相同，不需要处理。循环比较old_p中的1个shadow表项与硬件1个bucket的8个表项的key是否相同，如果没有相同的，则调用soc_l2x_callback删除shadow表项；如果key有相同的，则忽略HITDAf、HITSAf、ODD_PARITYf域，再进行比较硬表和软表，如果不相同，则调用soc_l2x_callback来插入该硬件表项。取shadow表项的地址赋给new_p，然后设置一个8次的for循环，在这个循环里，取硬件bucket的地址赋给old_p，如果shadow表项和硬件表项相同，不需要处理。循环比较1个硬件表项与1个shadow bucket的8个表项的key是否相同，如果key有相同的，调过；如果key不相同，调用soc_l2x_callback把硬件表项添加到shadow表中。
+（6）	最后判断软、硬bucket桶是否完全一致，如果不完全一致则调用sal_memcpy将硬bucket完全覆盖软bucket。
+2.2	soc_l2x_callback
+在soc_l2x_callback函数中，调用*ad->cb[i].fn函数进行处理，查找fn是在哪里定义的，是在soc_l2x_register中定义的，SDK代码中有好几个地方调用了soc_l2x_register，传进来的fn有soc_l2x_shadow_callback和_bcm_fb_l2mod_l2_register_callback。
+2.2.1soc_l2x_shadow_callback
+    在这个函数中，如果传进来的entry_del不等于0，则调用shr_avl_delete删除软表相应的表项；如果传进来的entry_add不等于0，则调用shr_avl_insert插入软表相应的表项。
+2.2.2 _bcm_fb_l2mod_l2_register_callback
+在_bcm_fb_l2mod_l2_register_callback，处理表项的函数的为_bcm_l2_cbs[unit]，_bcm_l2_cbs[unit]是通过bcm_fb_l2_addr_register函数的callback参数来定义的，bcm_fb_l2_addr_register是在mbcm_firebolt_driver这个结构体中定义的，该结构体对应的原函数为mbcm_l2_addr_register，再搜索代码中在哪儿对mbcm_l2_addr_register进行了赋值，发现是在bcm_esw_l2_addr_register中进行了赋值，该处对参数callback的赋值是_bcm_l2_addr_callback，因此是用_bcm_l2_addr_callback函数进行了回调处理；在_bcm_l2_addr_callback中，调用了l2_data[unit] ->cb[i].fn进行了处理，而对l2_data[unit] ->cb[i].fn是在bcm_esw_l2_addr_register中，其值等于bcm_esw_l2_addr_register的参数fn；在代码中查看是哪里调用了bcm_l2_addr_register，是bcmi_l2_notify_connect调用了bcm_l2_addr_register，传进来的参数fn为_bcmx_l2_notify_handler，因此最终调用的函数是_bcmx_l2_notify_handler。
+2.3	_bcmx_l2_notify_handler
+先调用GESW_L2EntrySyncJudge判断L2表项是否需要同步，静态表现变化、多播表项都不需要同步。然后把本板CPU MAC地址、l2addr写到strL2SyncInfo结构体里，然后调用GESW_SendMsgToRemote发送L2同步消息到对板。
+3 GESW_L2Init
+该函数仅创建了CPU MAC操作保护的信号量。
+4 GESW_AddCpuMacAddr
+（1）该函数的作用是在L2地址表中添加一条CPU MAC地址表项，设置为静态表项。
+（2）首先清空strL2Addr结构，设置strL2Addr的MAC地址、VLAN ID、flags、modid、port。调用bcm_l2_addr_add在L2表项中添加CPU MAC地址实体。
+（3）如果添加的是本板MAC地址，如果与记录的对板CPU MAC地址一样时，则设置对板CPU MAC为空。如果配置的本板的MAC地址，则调用GESW_SendMsgToRemote把CPU MAC地址发送到对板。
+5 GESW_AddSlaveCpuMacAddr
+该函数的作用是添加从核CPU MAC到L2表项。先调用GESW_CalculateMacAddr来计算本板从核MAC地址，然后计算对板从核MAC地址。再调用GESW_AddCpuMacAddr添加从核CPU MAC到L2表项。
+6 GESW_L2TableNotify
+（1）该函数是L2更新回调函数。无论是动态表项变化还是静态表项变化，均不处理本板MAC地址变化。如果本板收到对板发来的添加/删除对板CPU MAC表项，本板才会处理。
+（2）如果是静态表项，如果本板收到对板发来的添加/删除对板CPU MAC地址表项，本板才会处理。如果iInsert=0，则调用GESW_RealDelMacAddr来删除对板CPU MAC地址；GESW_RealDelMacAddr函数最终调用了bcm_l2_addr_delete函数；然后把对板的CPU MAC地址置0。如果是插入对板CPU MAC地址，则调用GESW_AddCpuMacAddr来插入对板CPU MAC地址。如果是插入非CPU MAC静态表项，就调用GESW_RealAddMacAddr来插入MAC地址。这些都不会发送L2同步信息到对板。
+（3）如果是动态表项，如果是本板的MAC地址不需要再进行添加。如果iInsert 0，则调用bcm_l2_addr_add添加该MAC地址。如果iInsert=0，则调用bcm_l2_addr_delete删除该MAC地址。
+
+
+
