@@ -5,3 +5,45 @@ Latency=Trans+∑[i+1,n]Proc[i]+Queue[i]
 CPI :Cycle Per Instruction，一条报文处理指令消耗的时钟周期
 Queue是低时延的关键
 
+转发时延计算公式：
+NP存储转发的时延分布：NP微码时延+TM时延+交换网时延+IO时延(MAC/Phy+FPGA接口转换)
+TM部分的时延是个最大不稳定的变量
+NP的E2E时延 = 多个并行流水线block的时延之和，流水线单元分为两类：传输单元(MAC/PHY)，处理单元(对packet进行处理，每个单元都可以抽象为有Queue缓存报文，计算单元处理报文)
+NP报文转发时延
+
+X86 server报文转发吞吐量计算方法：
+Throughput[cpu]=(vCPUFreq*vCPUs*vCPUUtil)/CPI*InstructionCount
+其中，vCPU: physical thread, 
+vCPUUtil: vCPU utility, 
+CPI :Cycle Per Instruction，           
+ Instruction Count：一个报文处理消耗的指令数
+该吞吐量计算公式综合了CPU主频、内存带宽、IO时延、多线程及其并行处理线性度。
+由throughput计算公式可见，要使转发吞吐量随VCPU（thread）个数线性增长，必须使每个packet都是并发的，能被负载均担的分配到任一空闲线程处理
+有两个不可控因素：内存墙时延和指令数，要尽量减少内存访问
+
+X86 server报文转发时延:
+Latency =Trans+∑_(i=1)^n▒〖Proc〗_i +〖Queue〗_i   //需要结合图去看
+CPI = ALU指令执行的cycles +访问memory(L1/L2/L3/DDR) 的cycles
+Trans = PCIE收、发接收报文的时延+NIC收、发报文时延
+
+
+不同时延测量方法。（有图）
+RFC1242定义了时延测量定时器，当报文的最后一位进入交换机（T0）时，启动该定时器；当报文的第一位离开交换机（T1）时，停止该定时器。
+LIFO = FIFO - (Packet size in bits/Link speed)
+RFC4689定义了时延测量定时器，当报文的最后一位进入交换机时，启动时延测量定时器，当报文的最后一位离开交换机时，停止时延测量定时器。
+
+RFC1242定义了时延测量定时器，当报文的第一个比特进入交换机时，启动该定时器，当报文的第一个比特离开交换机时，停止该定时器。
+
+该方法目前未在RFC中定义。时延测量定时器在报文的第一个比特进入交换机时启动，在报文最后一个比特离开交换机时停止。
+FILO = FIFO + (Packet size/Link speed)
+
+
+10Gbps链路串行化时延= Pakcet size *8 /10G(不同测试方法时延的差异区间)
+Packets size  64  128  256  512  1024  1024   1518  4096  9216 
+串行化delay 0.051 0.102 0.205 0.41 0.819  1.024   1.214  3.227  7.373（us）
+
+Latency=报文传输时延(Trans)+报文处理时延(Proc)+队列缓存时延(Queue)
+Congestion：E2E，建立流量均衡性网络，降低Queue队列深度；对于骨干网，采用高铁模型，基于全局网络拓扑进行流量动态调节，比如基于时间段调度流量（缓存时延下降）
+Shaping：edge ，在网络边缘上行、下行做shaping，减少burst从而降低骨干网设备的Queue队列深度（缓存时延下降）
+网络层次简化：含CDN下移，减少报文跳数，降低传输时延（传输时延下降）
+网络特性简化：降低处理时延/Queue调度级数，对NFV尤其有好处（处理及缓存时延下降）
