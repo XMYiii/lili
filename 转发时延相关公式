@@ -1,0 +1,7 @@
+NP报文转发时延
+Latency=Trans+∑[i+1,n]Proc[i]+Queue[i]
+其中 Proc[vcpu]=(vCPUs*vCPUUtil)/(Throughput)(时延与带宽、并行单元数存在关系)
+或者 Proc[vcpu]=(CPI*Instructio nCount)/vCPUFreq(时延与指令、主频存在关系)
+CPI :Cycle Per Instruction，一条报文处理指令消耗的时钟周期
+Queue是低时延的关键
+
