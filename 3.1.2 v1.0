@@ -1,0 +1,22 @@
+3.1.2 流分类的总体设计
+我司的IP DSLAM宽带接入设备包括MA5600T、MA5600、UA5000 IPMB以及一些小规格产品，其中最有代表性的是MA5600T。MA5600T产品主体部分包括一对以LSW为交换核心的主控板（主备）和若干带有业务处理逻辑（FPGA）的业务板，业务板和主控板之间采用星型GE总线连接。
+ 
+Figure 11 	MA5600T 系统架构示意图 (TR-101)
+MA5600T产品中的流分类功能，以及基于流分类的业务映射、QoS处理，主要在业务板上的业务处理逻辑FPGA上实现。在控制面，主机软件提供命令行和网管操作接口，由主机软件和单板软件配合完成流分类的配置，并支持数据库方式和BuildRun方式的配置恢复。在数据面，上行方向，业务板将从UNI接收的用户数据先还原为以太报文（注：也是由FPGA完成的），然后由FPGA完成报文的流分类和基于业务流的处理（如VLAN切换、优先级标记），并进行基于VLAN+MAC的学习，然后发送给主控板；主控板LSW进行基于VLAN+MAC的学习和转发，通过NNI接口发送到网络侧。下行方向的处理流程与上行类似，只是在业务逻辑上不进行VLAN+MAC的学习，而是基于VLAN+MAC找到业务流，然后进行处理、转发。
+ 
+Figure 12 	MA5600T上流分类及基于业务流的处理流程示意图
+可见流分类功能在数据面上主要由业务逻辑完成，在控制面上由主机软件、单板软件和业务逻辑共同完成。其中配置流分类的主机软件模块是L2M，与之配合的模块包括QOS（流量模板管理）、L2SS（配置业务流的MAC地址、IP地址绑定）以及SSMP、EMP等支撑平台。
+3.1.2.1 流分类设计与实现
+	随着ATM(异步传输模式) DSLAM到IP DSLAM的演进，原来的业务连接PVC逐渐退场，取而代之的是VLAN域、业务流的概念。在IP DSLAM中二层业务通道就是VLAN域，VLAN内的端口在二层是互通的，其基本转发机制是“VLAN+MACPORT”。
+我司接入产品的VLAN及基于VLAN的二层转发机制遵循如下协议：
+IEEE 802.1d：IEEE Standard for Information technology- Telecommunications and information exchange between systems- Local and metropolitan area networks- Common specifications Part 3: Media Access Control (MAC) Bridges
+IEEE 802.1Q：IEEE standards for Local and metropolitan area networks-Virtual Bridged Local Area Networks
+IEEE P802.1ad/D6.0：Draft Standard for Local and Metropolitan Area Networks—Virtual Bridged Local Area Networks— Amendment 4: Provider Bridges
+在IP DSLAM设备中，网络侧的端口一般是以太端口，而用户侧的接入形式则多种多样，可能是DSL 线路、以太接入，也可能是GPON接入，或者ATM、E3等形式的接入，甚至WiMax无线接入。同时，每个用户端口上还要求进行业务分类，对每条业务流实现不同的VLAN转换、QoS处理。因此，对于用户侧端口，我们不能像网络侧端口哪些将其直接加入VLAN，而是先进行流分类，然后将各个业务流再加入VLAN。
+Figure 13 VLAN域的概念及其和流分类的关系
+在我司的产品中具有多种类型的VLAN：Standard VLAN、Smart VLAN、Mux VLAN以及Super VLAN。其中Standard VLAN即IEEE 802.1Q定义的VLAN，只能添加以太上行口，或内部复合了以太端口的MPLS、GPON、EPON上行口（这些能够直接加入VLAN的上行口有时称为“标准端口”），VLAN内的端口是二层互通的。Smart VLAN和Mux VLAN除了可以加入标准端口外，还可以加入业务流（又称“业务虚端口”），因此可以用于接入用户，将用户的业务流映射到S-VLAN；不同的是，Mux VLAN只能添加一条业务流，因此可以标识用户，相当于TR-101定义的1:1 VLAN；Smart VLAN可以添加多条业务流，即用来标识一个用户群，相当于TR-101定义的N:1 VLAN；同时，Smart VLAN内的用户是二层隔离的。
+Super VLAN用于实现VLAN聚合、节省IP地址（RFC3069），一个Super VLAN可以包含若干Sub VLAN，由Sub VLAN隔离广播域，并采用ARP Proxy的方法进行Sub VLAN间的三层互通。Super VLAN需要配置相应的VLAN接口、IP地址，但不能添加任何标准端口和业务流；而添加了业务流的Mux VLAN或Smart VLAN都可以作为Sub VLAN加入VLAN聚合组。
+另外，VLAN还有三种模式：common、stacking、QinQ，这些模式主要是对二层业务映射而言的，体现为处理VLAN Tag的层数和方式，因此仅对Mux VLAN和Smart VLAN有意义。Common模式表示只看到一层S-VLAN Tag；Stacking模式表示网络侧有两层VLAN Tag：S-Tag和C-Tag；QinQ模式表示对用户的报文进行透传（Transparent LAN Service），而AN节点只负责添加/剥离一层S-Tag。
+3.1.2.2 Smart Vlan技术
+SmartVLAN是专门为IP DSALM可运营可管理特性而设计：目的是通过少量的VLAN就可以方便的实现接入用户之间二层的隔离，仅占用上层设备有限的VLAN，节约VLAN资源；又省略了烦琐的用户配置命令。
+SmartVLAN是基于华为公司IP DSALM的硬件架构平台的专有技术，硬件为端口保留了互通和隔离模式，进入SmartVLAN的端口（即使属于相同的VLAN），在硬件上就会进入了隔离状态，相互端口之间不会互相访问，流量只会转发到上行端口。
