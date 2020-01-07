@@ -1,0 +1,19 @@
+OLT的物理实体就是由许多单板构成的机框，以MA5800为例，大致可以分为三类：PON板、P2P板和主控板。其中PON处于用户侧，通过分光器与ONU连接；P2P单板处于网络侧，与以太网设备（如路由器）连接，包括级联板和上行板两种类型；主控板是系统控制和业务交换及汇聚的核心，不同单板之间的报文交互需要经过主控板来交换，此外主控板也具有上行板的功能。
+IFgpon: GPON Interface    SNI: Service Node Interface
+ UNI: User to Network Interface   CPE: Customer Premises Equipment
+
+数据转发流程
+1、	上行数据报文转发流程
+1、用户侧（如PC机）发来的ETH帧到达ONT端口后，该端口首先对报文进行判断，如果没有tag，就打上native-vlan（PVID），若有tag则判断是否允许通过，然后LSW对数据报文中的源MAC地址进行学习，将MAC、cvlanId、port对应关系记录到LSW的MAC表，然后将数据转发；
+2、ONT的GMAC芯片对数据进行处理，GMAC根据Gem映射表对报文进行封装，将ETH报文封装成在ODN线路上传输的GEM帧；
+3、数据报文传播到GPBC单板，GMAC芯片获取gemport 和cvlanId，并对数据报文进行解封转，使之恢复成为ETH帧；
+4、GPBC的TM逻辑根据gemport和cvlanId查找TM流表，判断报文的cvlan是否需要进行切换，需要切换则进行切换，并对切换后的报文源MAC和svlanId进行学习，记录到MAC表，然后将报文转发到主控板；
+5、报文到达主控板之后，主控板的LSW首先对源MAC进行学习，将MAC、svlanId及进入port记录记录进MAC表。然后根据目的MAC和svlanId查找MAC表确认数据报文从上行板GIU的哪个端口转发出去，找不到对应的端口则在svlanId所指的VLAN中进行广播。
+配图：
+2、	下行数据报文转发
+1、下行报文（网络侧到用户侧）从上行板GUI端口进入，主控板首先对报文进行判断，允许通过则LSW对报文进行学习，并根据目的MAC和svlanId查找MAC表确定数据报文该发往那块GPBC板，找到的直接转发，找不到则根据svlanId确定该VLAN包含的端口，然后将报文先抑制，再广播到这些端口；
+2、数据报文发送到GPBC单板后，根据目的MAC和svlanId查找MAC表，找出数据报文的出port，对应的flowId，根据flowId查找TM流表，获取gemport，并将数据报文切换回cvlanId；
+3、GPBC的GMAC模块再根据TM流表提供的信息对ETH帧的数据报文进行封装，从对应的port将数据转发出去；
+4、数据报文到分光器后，数据报文被复制成多份，以广播的形式发往每个ONT；
+5、ONT收到报文后，GMAC模块首先进行解封装，然后根据gemport对数据进行选择接收（是自己的就接收，不是则直接丢弃）；
+6、然后根据目的MAC和cvlanId查找MAC表，找到数据报文的出口端口，再将数据报文转发出去。
