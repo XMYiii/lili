@@ -1,0 +1,206 @@
+ 
+
+目  录
+一、	DMM使用注意细节	4
+二、	DMM 基础信息	5
+三、	DMM消息结构	6
+四、	DMM基本使用方法	7
+五、	DMM使用举例	8
+
+
+
+ 
+
+一、	DMM使用注意细节
+1、	调用IDmmMailbox::SendMessage发送DMM消息：
+SendMessage可以发送板间和板内消息，adwMsg[1]必须指向一块内存，并且这块内存必须使用IDmmMailbox::AllocMsg分配，不能使用VOS_Malloc或new分配；
+1）如果SendMessage返回成功，这块内存由接收者使用IDmmMailbox::FreeMsg释放，发送者不能释放；释放时先判断adwMsg[1]不为0。
+2）如果SendMessage返回失败，这块内存需要发送者使用IDmmMailbox::FreeMsg释放，不能使用VOS_Free或delete释放。
+
+2、	对于应用已久的IDmmMailbox::InnerSendMsg的情况：
+调用IDmmMailbox::InnerSendMsg只能发送板内消息，adwMsg[1]可以为0，也可以是一块内存地址，但不能为其他数值。目前的应用中，这块内存可以使用IDmmMailbox::AllocMsg分配，也可以使用VOS_Malloc分配，但不能使用new分配；
+1）如果InnerSendMsg返回成功，这块内存由接收者释放，发送者不能够释放；释放时先判断adwMsg[1]不为空。
+2）如果InnerSendMsg返回失败，这块内存需要发送者释放；
+3）如果使用IDmmMailbox::AllocMsg分配则使用IDmmMailbox::FreeMsg释放，如果使用VOS_Malloc分配则使用VOS_Free释放，但都不能使用delete释放。
+
+3、	任何消息发送（包括使用SendMessage和InnerSendMsg接口）都建议使用AllocMsg申请内存发送，统一用FreeMsg释放，原因如下：
+1）RecieveMessage接口会对消息指针指向的地址向前偏移56字节进行读取操作，原因是接收时并不知道消息是如何发送的，而同步消息处理需要读取包头。
+2）使用InnerSendMsg，Msg[1]使用0没有问题，是DMM认为Msg[1]是个指针，所以在处理指针前做了和NULL的判断，在vxworks下NULL正好等于0，现在没问题并不代表将来没问题。
+3）InnerSendMsg发送时使用了VOS_Malloc，只是在目前Dopra管理内存的基础上向前越界读取56字节正好没问题，如果是非Dopra管理内存或在windows平台上有可能有异常，而且如果偏移56字节的第一个WORD如果和DMM包头一致，就会造成DMM误认消息包，导致数据错误读取，包括长度等重要信息。
+4）如果有两个应用模块使用不同方式发送消息，接收方应用模块处理会出问题
+如A模块用AllocMsg申请内存并使用SendMessage发送消息给C模块，B模块用VOS_Malloc申请内存并使用InnerSendMsg发送消息给C模块，就会导致接收方C模块不知道使用什么方式释放内存。
+
+4、	在接收的地方，在调用IDmmMailbox::ReceiveMessage接收DMM消息后，内存释放处理：
+1）	如果adwMsg[1]不为0就代表是指向一块内存的指针，这块内存由接收者释放；
+2）	如果发送的地方是使用IDmmMailbox::AllocMsg分配的，在接收的地方需要使用IDmmMailbox::FreeMsg释放；如果发送的地方是使用VOS_Malloc分配的，在接收的地方需要使用VOS_Free释放；都不能使用delete释放。
+
+5、	任务在接收DMM消息，在调用IDmmMailbox::ReceiveMessage时如果返回值不为0时，还要多判断一下是否为ERR_DMM_NO_MSG。
+
+6、	在中断处理函数里面不能够使用DMM邮箱来发送消息，因为用DMM邮箱发送消息会获取信号量，中断处理函数里面是不能获取信号量的，可以使用VOS_SendMsg发送消息。
+
+DMM发送和接收相关举例见第五章节。
+二、	DMM 基础信息
+1、DMM邮箱
+1）DMM通信都是基于逻辑邮箱，这个邮箱必须是每个发送消息或者接收消息的模块都有的，邮箱标识消息源地址（创建邮箱会要求输入自己的标识地址）
+2）	邮箱因接收方式不同而被分为：
+    “消息队列邮箱”—— 用消息队列处理消息
+    “回调函数邮箱”—— 用回调函数处理消息
+3）	DMM邮箱是消息的最终目的地。
+每个模块要为自己创建邮箱来作为消息处理（接收、发送等）的工具。
+4）邮箱的地址标识由下面几个字段组成：
+		网元ID
+		逻辑板ID
+		模块ID
+		入口ID（标识模块内的第几个邮箱）
+2、	DMM提供了两个接口类：
+1）	iDMM : 封装了DMM API
+		CreatMailbox
+2）	iDmmMailbox : 封装了以邮箱为对象的消息操作接口
+		ReceiveMessage 
+		SendMessage 
+		AllocMsg 
+		FreeMsg 
+		GetMsgSenderAddr
+
+三、	DMM消息结构
+
+  
+
+
+
+
+
+
+
+adwMsg[0]: MsgType消息类型
+adwMsg[1]: DmmBuf 消息包地址
+adwMsg[2]: 用户参数1，在命令处理为用户ID(UserID)
+adwMsg[3]: 用户参数2，命令响应为TEI
+
+四、	DMM基本使用方法
+1、DMM消息申请IDmmMailbox::AllocMsg：
+即adwMsg[1]，DmmBuf 消息包地址，发送者使用DMM接口的AllocMsg申请内存。
+AllocMsg实际分配的内存是包含包头的内存，会填写包头信息，返回给调用者的是数据区的指针。
+DWORD IDmmMailbox::AllocMsg (
+     void** ppMsgBuf,// 用来输出申请的数据缓冲区的首地址
+DWORD dwBufSize, // 数据缓冲区的大小
+char *pFileName,
+DWORD dwFileLine);
+使用SendMessage发送消息，释放内存用FreeMsg。
+2、DMM发送SendMessage
+	DWORD iDmmMailbox::SendMessage(
+DMM_MSG_ADDR DstDmmAddr, // 目的地址信息
+DWORD dwaMsg[4], // 消息数组 
+DWORD dwDataLength, // 数据区有效数据长度
+BYTE byMode   //发送模式
+DWORD dwTimeOut = 0,
+BYTE byPacketInfo = 0, // 消息包信息(净负荷数据协议)
+BYTE byPriority = 0)
+1）消息发送成功，由接收者释放内存；
+   2）消息发送失败，由发生者释放内存；
+3、DMM接收ReceiveMessage
+DWORD IDmmMailbox::ReceiveMessage(
+  DWORD adwMsg[4], // 消息数组 (Msg[1]放置数据缓冲区首地址)
+DWORD dwWaitTime = 0 // 接收等待时间)
+4、DMM释放消息FreeMsg
+DWORD IDmmMailbox::FreeMsg(
+void *pMsgBuf,// 数据缓冲区的首地址(释放使用DMM_AllocMsg分配的空间)                    
+char *pFileName,
+DWORD dwFileLine);
+
+五、	DMM使用举例
+1、	DMM发送数据例子
+void CXXXXX::SendMsgToXXXX(void)
+{ 
+    DWORD adwMsg[4] = {0};
+    DWORD dwRC = 0;
+    void  *pSendMsgBuf = NULL;
+
+    ASSERT(m_pIMailbox != NULL);
+    ASSERT(m_piSBoard != NULL);
+
+    // 申请数据的空间大小应用模块计算好dwSize
+    ......
+    
+    dwRC = m_pIMailbox->AllocMsg(&pSendMsgBuf, dwSize);// 申请DMM内存空间
+    if (dwRC != ERR_VOS_SUCCESS)
+    {
+        // 申请不成功时记录到底要申请多少内存 dwSize
+        m_piSBoard->CheckErrCode(dwSize, VOS_ERR_LEVEL4, MODULE_ID_XXXXX,"AllocMsg Fail");        
+        m_piSBoard->CheckErrCode(dwRC, VOS_ERR_LEVEL1, MODULE_ID_XXXXX,"AllocMsg Fail");
+        return;
+    }
+
+    ......
+    // 填写模块需要发送的信息。如果要打包CRM，请调用ICRM相关函数打包,如SetCmdHeadFlag,AddToPacket等等。
+    ......
+
+    // 填写相关的adwMsg[4]内容
+    adwMsg[0] = MSG_XXXXX_NOTIFY;
+    adwMsg[1] = (DWORD)pSendMsgBuf;
+    ......
+    // 填写相关的目标DMM地址DstDmmAddr和计算好发送长度dwLeng
+    ......
+    
+    dwRC = m_pIMailbox->SendMessage(DstDmmAddr, adwMsg, dwLeng);
+    if (dwRC != DMM_SUCCESS)
+    {
+        m_piSBoard->CheckErrCode(dwRC, VOS_ERR_LEVEL4, MODULE_ID_XXXXX,"SendMsg fail");
+        dwRC = m_pIMailbox->FreeMsg(pSendMsgBuf);
+        m_piSBoard->CheckErrCode(dwRC, VOS_ERR_LEVEL4, MODULE_ID_XXXXX,"FreeMsg fail");
+        pSendMsgBuf = NULL;
+    }
+    return;
+}
+
+2、	DMM接收数据例子
+void CXXXXX::ProcMsg(void)
+{
+    DWORD dwRC;
+    DWORD adwMsg[4] = {0};
+    DWORD dwUid     = 0; 
+    ASSERT(m_piSBoard != NULL);
+  
+    for(;;)
+    {
+        //从邮箱中接收消息
+        dwRC = m_pIMailbox->ReceiveMessage(adwMsg, DMM_NO_WAIT);
+
+        if (dwRC == ERR_DMM_NO_MSG)// 邮箱为空
+        {
+            break;
+        }
+
+        if (dwRC != DMM_SUCCESS)
+        {
+            m_piSBoard->CheckErrCode(dwRC, VOS_ERR_LEVEL4, MODULE_ID_XXXXX,"ReceiveMessage Failed");
+            break;
+        } 
+
+        switch (adwMsg[0])// 消息字
+        {
+            case MSG_XXXXX_NOTIFY:
+            {
+                ......
+                break;
+            }
+
+            ......
+
+            default:
+            {   
+                break;
+            }
+         }
+        
+        if (0 != adwMsg[1])
+        {
+            dwRC = m_pIMailbox->FreeMsg((void *)adwMsg[1]);// 释放接收消息包;
+            m_piSBoard->CheckErrCode(dwRC, VOS_ERR_LEVEL1, MODULE_ID_XXXXX,"FreeMsg fail");
+            adwMsg[1] = NULL;
+        }
+    }
+    return;
+}
+
+
