@@ -1,0 +1,102 @@
+g_stDcplHWVerTblForDrv_Arrandle_CH11MGPUB
+
+/* for drv */
+DECPLE_HW_VER_TABLE g_stDcplHWVerTblForDrv_Arrandle_CH11MGPUB[] =
+{
+    {0x5AA5, 13, 0, 0, 0, 0, 0, 8},/*CH11MGPUB*/
+    {0x5AA5, 13, 0, 0, 2, 0, 0, 8},/*CH11MSFMA*/
+    {0x5AA5, 13, 0, 0, 6, 0, 0, 8},/*CH11MSFMC*/ /* DTS2015052602709,l00175307,20150526 */
+    {0x5AA5, 19, 0, 0, 4, 0, 0, 8},/*CH11MSPMA*/
+    {0x5AA5, 19, 0, 0, 4, 1, 0, 8},
+    {0xEDED, 0xEDED, 0xED, 0xED, 0xEDED, 0xED, 0xED, 0xEDED},
+};
+
+
+EmbedLinuxDecple.sh     拷贝保留内存解耦包到/tmp下
+ServHdLinuxDecple.sh
+servInitrdLinuxDecple.sh
+
+RESERVED_MEM_SIZE_FOR_DRVPACK
+decouple.c
+
+drvPacketSync
+
+/* 定义Linux解耦中驱动包信息头 */
+typedef struct tagLinuxDecoupleHeader
+{
+    INT32  iDriverflag;              /* 板载驱动包标志，如deed */
+    UINT32 uiDriverFileSize;          /* 板载驱动包的大小 */
+    UINT32 uiDriverFileCrc;          /* 板载驱动包的CRC */
+    UINT32 uiDriverFileOffset;        /* 板载驱动包的存放位置 */
+    INT8   cDriverFileName[232];     /* 板载驱动包的名字 */
+    UINT32 uiHWVer;                  /* 当前单板的驱动包解耦版本号 */
+    INT32  iResevd;                  /* 保留 */
+}LINUX_DECOUPLE_HEADER;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+1、向后台OMU发送消息，请求加载驱动包
+2、加载模块调用DECPLE_GetDeHwVerForDRVP接口获取驱动包对应的解耦硬件版本，加载模块将该版本上报给OMU，OMU校验驱动包和单板硬件的配套关系
+   DECPLE_GetDeHwVerForDRVP中先调用Get_DeHwVerTbl获取静态硬件解耦表格，然后再调用DECPLE_GetDeHwVer获取硬件解耦版本
+3、DECPLE_ChkFlashTbl读取flash中解耦表格的内容到内存
+   如果Flash中存放的是新表格，那么按照NEW_DECPLE_TABLE_TYPE == uiTableType新表格进行查表
+   如果查找不到对应的单板，则返回整表中最大的硬件解耦版本号,以实现前向兼容
+   如果是老表，返回Flash表项中的最后一项
+   flash中数据无效时，使用本地软表。如果查找不到，使用最后一条表项
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+rc.local中会执行.   PS:双驱动包的同步在替换驱动之后。
+echo "Sync DriverPacket..."
+/usr/sbin/drvPacketSync
+
+drvPacketSync===dualdrvpacket.c->main				实现双驱动包的同步
+SyncPrimDriverPacket												tar命令执行错误，板载驱动包备区同步主区
+		DrvPackage_ReadHead			读取备区区驱动包信息头，并做基本的校验，校验包标志、包长度、包存放位置
+		DrvPackage_ChkCRC32			备区驱动包CRC校验
+		BspWriteFlash						将备区驱动包同步至主区
+		BspWriteFlash						将备区驱动包信息头同步至主区
+SyncBakDriverPacket													tar命令执行OK，板载驱动包主区同步备区
+		DrvPackage_ReadHead			读取主区驱动包信息头，并做基本的校验
+		DrvPackage_ReadHead			读取备区驱动包信息头，并做基本的校验
+														主区Linux解耦标志被破坏，备区Linux解耦标志完好：由于BIOS中存在恢复这一机制,所以这一场景在OS下只打印相关信息
+														主区、备区Linux解耦标志均无效，则认为此时不需要Linux解耦
+														主区标志OK，继续向下处理
+		DrvPackage_ChkCRC32			主区驱动包CRC校验
+		DrvPackage_ChkCRC32			校验备区驱动包CRC
+														主区、备区CRC相等，不需要同步。否则需要同步
+		BspWriteFlash						将主区驱动包同步至备区
+		BspWriteFlash						将主区驱动包信息头同步至备区
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+生产做大包时将硬件解耦表格，做到文件中 hwVerTbl_CH11MGPUA.txt
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+user_src\GPUGSU_make.sh中调用Create_DecouplePacket.sh
+首先拷贝对应最新的驱动版本信息到相应的目录中 cp -v ./user_src/Tool/drvpkgver 到/LinuxDecouple/kernel_2.6.32.100/HWVerXXX/Driver、/LinuxDecouple/kernel_3.0.13.100/HWVerXXX/Driver
+编译2.6.32.12版本需要替换的驱动   cp -v xxxx.ko ../../../../../sw/GPUB/LinuxDecouple/kernel_2.6.32.100/HWVerXXX/Driver/12/xxxx
+编译2.6.32.45版本需要替换的驱动		cp -v xxxx.ko ../../../../../sw/GPUB/LinuxDecouple/kernel_2.6.32.100/HWVerXXX/Driver/45/xxxx
+编译2.6.32.59版本需要替换的驱动   cp -v xxxx.ko ../../../../../sw/GPUB/LinuxDecouple/kernel_2.6.32.100/HWVerXXX/Driver/59/xxxx
+编译lib库文件											cp -v ./libGPU-BSP.so ../LinuxDecouple/kernel_2.6.32.100/HWVerXXX/Other/lib32/
+将version.txt文件去除空格					dos2unix ../LinuxDecouple/version.txt > /dev/null
+生成解耦包												tar -zcvf LinuxDecouple.tar.gz LinuxDecouple/          cp LinuxDecouple.tar.gz DRVP
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+etc/rc.d/rc.sysinit 中调用EmbedLinuxDecple.sh
+drvPacketCpy===copy_driver_packet.c->main->CopyDrvPacket2File   从保留内存中拷贝驱动包至文件中(从保留内存中拷贝驱动包至/tmp目录下)
+cd /tmp 																												切换到临时目录下
+drvPacketNameGet===get_driver_packet_name.c->main               获取驱动包的名称 LinuxDecouple.tar.gz
+DrvPacketBaseName=`echo ${DrvPacketName}|sed -n 's/\.tar.gz//p'`将驱动包的名称后缀去掉 LinuxDecouple
+tar -xf ${DrvPacketName}																				解压文件,解压失败后会生成/tmp/decouple.txt
+cd ${DrvPacketBaseName}																					切换工作目录至解压后的驱动包目录
+cp -f ./version.txt /tmp/version.txt														拷贝解耦版本说明文件到tmp目录下  version.txt来自sw/GPUB/LinuxDecouple
+OS_Dir=`getsysver`   OS_Dir="kernel_"${OS_Dir} 									查找内核文件目录LinuxDecouple\kernel_2.6.32.100或者LinuxDecouple\kernel_3.0.13.100
+cd ${OS_Dir}																										切换工作目录到查找得到的内核文件目录
+drvPacketVerGet===get_drvpkt_hwver.c->main											查询驱动包的硬件解耦版本号stHeaderInfo.uiHWVer来确定硬件解耦目录  LinuxDecouple\kernel_2.6.32.100\HWVer008
+if [ $os_ver -ge $driver_ver ];then															如果两个目录都存在，且版本号一致，说明当前驱动是最细你的，不需要解耦。cat /etc/drvpkgver 显示为108   LinuxDecouple\kernel_2.6.32.100\HWVer008\Driver\drvpkgver显示为108
+																																假如解耦包中无if [ -e ./Driver/drvpkgver ];也不需要解耦，否则进行解耦。
+./EmbedReplace.sh																								执行嵌入式系统驱动文件替换脚本LinuxDecouple\kernel_2.6.32.100\HWVer008\EmbedReplace.sh
+																																替换失败，复位单板. 替换成功删除驱动包文件和驱动包解压后的文件
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+问题1、在执行解耦脚本的时候，看门狗的驱动是否已经插入？
+       没有插入，此处的狗是通过unbios设置的逻辑待清狗功能来实现的。
