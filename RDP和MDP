@@ -1,0 +1,43 @@
+•	MDP RDP是什么？
+•	Message Dispatch Process 消息分发进程 
+•	是堆叠协议，用来维持两个节点的心跳和同步两个节点的堆叠信息。
+•	mdp是一个标准协议，用于探索堆叠系统并在维护系统内各节点的堆叠状态，使新的节点能加入堆叠系统，且每个各节点都能知道其他节点的状态。rdp实现可靠传输。
+•	节点的堆叠状态有：
+•	（1）disc（探索）
+•	disc状态的节点发送探索（disc）报文；
+•	（2）listen（侦听）
+•	listen状态的节点只转发接收到的报文，必要时把自己的信息附加到接收到报文中并转发；
+•	（3）HB（心跳）状态
+•	HB状态的节点分为主堆叠的节点和从堆叠节点，前者发送HB报文，后者转发HB报文。
+•	（1）各堆叠节点初状态均为discover。在mdp_proto_init中会初始化为disc状态 。
+•	（2） 比较报文中附带的CPU优先级和附带的MAC地址（非报文源、目的MAC地址），若报文CPU优先级高于本节点，转发该报文，本节点进入listen状态；
+•	（3）当报文cpu优先级与本节点相同且附带MAC与本节点MAC相同，本节点进入HB状态（主堆叠）并开始HB状态的行为；
+•	 
+•	（9） HB维持条件是:接收到listen报文 
+•	1）优先级高，重置
+•	                                                                          2）相等 ，丢弃报文维持HB状态
+•	                                                                          3）优先级较低，自身信息附加到报文，转listen
+•	（10）HB维持条件是:接收到HB报文 1) 主节点 与自身相同；否则重置
+•	                                                                       2）从节点 与自身不同；否则重置
+•	本板mdp的信息mdp_my_info结构体主要包含：
+•	1）cpu id 和cpu 优先级
+•	2）本板cpu mac地址
+•	3）端口LINK状态位图
+•	4）端口使能位图
+•	5）oam状态位图
+•	6）Trunk OAM状态位图
+•	7）主备链路信息
+•	8）网络大小模式信息
+•	9）本板l2表项个数
+ 
+•	收包：RDP挂接在任务“stk_pkt”,stk_handle_packet  调用最终注册的Mdp_process_packet 和rdp_process_packet实现收包。
+•	发包： mdp_start_process  中启动“MDP”任务，任务实体 mdp_process 中根据0.5s每次获取信号量4次超时来调用mdp_timo控制mdp_timer_handler和mdp_hb_timer_handler来控制最终mdp_send_mdp_pak和mdp_send_hb_pak发送报文。
+•	RDP代码实现关键点
+•	1：使用GESW_SendMsgToRemote -->rdp_send_async发送要更新的内容，包括：                                                                 
+•	2:使用GESW_RdpPktRcvCallback响应收到的RDP消息    
+注意的几点：
+•	以交换CPU优先级信息和MAC地址信息来确定主堆叠节点。
+•	即7槽SCU永远为主堆叠节点。
+•	堆叠down后 备用单板关闭所有ge端口。
+•	GESW_SlaveMdpDelayTask延时任务，当堆叠启动后L2表项完成，才打开备板端口；
+
