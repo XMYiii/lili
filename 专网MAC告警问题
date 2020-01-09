@@ -1,0 +1,112 @@
+1	MAC漂移告警和MAC越限告警的原理：
+1.	FEI单板定时轮询，查询底层微码的MAC表项，MAC越限查询MAC_LMT_STAT，查到计数大于VSI的MAC上限，就上报MAC越限告警；MAC漂移告警查询MACFLAP，查到random值连续变化3次，就上报MAC漂移告警；
+2.	专网MAC模块检测到告警后，就发送消息给FEI框架的告警模块，由FEI的告警模块统一向主控FM组件发送告警消息。
+
+2	MAC漂移告警和MAC越限告警当前存在问题：
+1.	当VSI业务量很大时（如2k以上），若构造2k个MAC告警，那么每个高速单板都会上报2k个告警消息给主控的FM组件。而FM组件的最大处理容量是5s处理1000个告警消息。
+2.	存在两个问题要解决：
+（1）	VSI只需要选择一块板，由该单板上报MAC告警，避免一个VSI的告警，每个高速单板都上报，因此要实现VSI主控选板。（R8C00版本实现）
+（2）	专网MAC模块检测到MAC告警后，发送告警消息给FEI框架，由FEI框架告警模块处理，在告警发送链表中添加节点，然后依次发出告警消息给FM组件。那么如果FM的处理拥塞，返回失败怎么处理呢？
+R7C10版本前期，FEI框架告警模块碰到FM拥塞返回失败时，没有处理失败场景，这样会导致部分告警报不上去或残留的情况。
+R7C10版本后期，由框架组的孙钧00320987对FEI框架告警处理模块进行优化，当FM返回失败时，FEI框架做重发机制，发送失败的节点保留在告警链表中，由框架定时器定时轮询发。
+
+3	VSI选板的原理及场景说明：
+3.1	场景1：专网告警选板
+3.1.1	技术点 资源池维护
+感知LFE的单板上线、下线、软复位事件，供专网告警选板使用。
+这里新增两张软表，
+（1）软表一，保存nodeId的引用计数；
+Key：nodeId
+Data：referNum
+说明：每块单板对应一个nodeId，referNum记录有多少个VSI实例选中了这块板；
+每次感知到单板上线时，根据单板nodeId生成一条软表记录；单板下线或软复位、hardbad时，删除nodeId对应的软表；
+在VSI实例创建时，被选中的nodeId对应的软表referNum加1，需要刷新软表一；
+在VSI实例删除时，被选中的nodeId对应的软表referNum减1，需要刷新软表一；
+（2）软表二，保存vsi的instanceId和nodeId的关系；
+Key：instanceId
+Data：nodeId
+说明：每一条记录的data表示这个VSI实例选中单板对应的nodeId；
+在VSI实例创建时，根据选板算法（参考技术点2）选择一块单板，生成一条软表记录，保存instanceId和nodeId的关系；选中的填正常nodeId，未选中的软表nodeId填写全F；
+在VSI实例删除时，删除instanceId对应的软表二；
+
+考虑到R8C00支撑主控软复位，这两个软表都需要保存到高端内存；
+3.1.2	技术点 选板算法
+专网的MAC越限告警和MAC漂移告警，基于专网实例来上报的，考虑到这个两个告警目前在单板上是在相同的流程里面处理，那么使得不同专网实例的告警散列到不同的单板进行上报，充分利用分布式的设备的CPU处理能力，避免某个单板CPU负载过重。
+专网的PATH下发到FEISW组件，根据选板的算法，选出一块单板作为专网告警上报的单板，新增一个专网告警选板FES表（暂定ID为1999），输出表项到FES表，接口板上专网的PATH（88078）下发。
+Table 1 	专网告警选板FES表
+字段	说明	取值范围
+uiVrId	虚拟路由器标识	0
+uiInstanceId	VSI的实例索引	[0, 4294967295]
+uiNodeId	选中单板的NodeId	[0, 4294967295]
+		
+
+具体选板算法：
+遍历技术点1介绍的软表一，找到最小的referNum的软表记录，返回对应的nodeId，并把nodeId对应软表记录的referNum加1，并保存；
+3.1.3	技术点 重新选板
+单板硬复位、单板拔出、单板下电、单板软复位、单板hardbad，需要专网告警触发重新选板。响应FEISW的EOP事件（源头是FEISW组件订阅设备管理的单板状态变化事件）。
+具体操作是：
+（1）	当感知单板离线或软复位、hardbad时，遍历技术点1介绍的软表二，当对应nodeId与状态变化单板的nodeId相等，触发重新选板；
+（2）	删除nodeId对应的软表一；
+（3）	刷新instanceId为key的软表二中的nodeId；
+（4）	刷新FES 2862号表的nodeId；触发path重新搜索下发FEI；
+
+  另外，板上线时，除了生成一张nodeId软表记录，还需要重新选板，利用nodeId为全F搜索未选中板的记录，全部重发重新选板。
+3.1.4	技术点 主备备份
+告警选板结果需要备份到备用主控板，通过框架的TBLM备份机制实现，注册TBLM表项的时候需要设置备份标志。
+3.1.5	技术点 主控软复位（R8C00）
+   主控软复位结束，平滑处理，专网实例创建path下发，读取到instanceId对应的nodeId，判断nodeId对应的单板是否在线，如果离线或软复位，就触发重新选板；刷新nodeId对应的软表一的referNum，刷新instanceId为key的软表二中的nodeId；刷新FES 2862号表的nodeId；触发path重新搜索下发FEI；
+   对于场景：主控软复位期间，单板离线；
+   在平滑期间，可能会有EOP事件通知，需要考虑时序问题（path下发和事件通知）；
+   时序1：单板离线事件先通知，参考技术点3的处理；当path下发时，instanceId对应的nodeId已更新；此时判断该nodeId对应单板在线，不用重新选板；
+   时序2：path先下发处理，如果已经有nodeId选中，不用重新选板，如果没选中就选板；单板离线事件处理时，触发重新选板，参考技术点3的处理；
+
+3.2	场景2：专网MAC越限告警
+3.2.1	技术点 告警上报
+基于VSI检测MAC越限，系统默认使能，当VSI学习的MAC地址越过门限值，触发MAC越限告警，单个VSI默认支持512个MAC，上报告警门限是95%，结束告警门限是90%。VSI的MAC限制数量、告警门限允许用户配置。
+PATH 88078关联新增的VSI告警选板表，下发PATH TLV到单板FEI组件，FEI组件根据TLV中的NodeId判断是否属于本板，如果是则保存VSI告警的TBLM表，如果不是则删除VSI告警的TBLM表，确保TBLM告警的CST表只在选中的本板存储。VSI告警的TBLM表需要新增，暂且命名为FEI_TBL_VSI_MAC_ALARM，从原来TBLM表FEI_TBL_FID_MAC_INFO中独立出来。
+处理告警的定时器超时，遍历新增TBLM表FEI_TBL_VSI_MAC_ALARM，处理上报告警。
+3.3	场景3：专网MAC漂移告警
+3.3.1	技术点 告警上报
+基于VSI检测MAC漂移，系统默认使能，如果发现VSI某条MAC的出接口发生连续10次跳变，则上报MAC漂移告警；上报告警后，连续检测10次，均未发生MAC漂移，结束告警。
+单板FEI保存MAC漂移告警的信息从原来的TBLM表FEI_TBL_FID_MAC_INFO中独立出来，保存到的新增TBLM表FEI_TBL_VSI_MAC_ALARM。
+
+4	VSI的MAC告警选板相关定位手段：
+1.查nodeId软表（VSI引用计数），一个板对应一条记录；
+display feicommon slot 21 frame cst 1091 all 
+ 
+
+2.查InstanceId软表，十字链表；一个instance对应一个nodeId，一个nodeId对应多个instance;
+display feicommon slot 21 frame cst 1092 all
+ 
+3.查询FES 2862的记录是否有（选板表，看查到VSI对应选到哪个板）；
+display fes table 2862 v 
+ 
+4.查询path（88078）是否下发；
+
+5.查询FEI的选板软表是否生成；
+display feicommon slot 6 frame cst 1515 all
+ 
+
+其他手段：
+//fei侧vpls 诊断日志开关
+debugging fe slot 18 vpls instance 0 （针对FEI_VPLS_DBGOUT接口的诊断日志）
+debugging fe slot 18 vpls instance 1（针对FEI_VPLS_DBGOUT_EX接口的诊断日志）
+//feisw侧vpls 诊断日志开关
+debugging vpls forward instance 0 （针对FEISW_VPLS_DBGOUT接口的诊断日志）
+
+查看日志：（适用FEISW和FEI）
+[~HUAWEI-diagnose]display logfile slot 18 module vpls
+
+附CSTID申请：
+FEI_CST_VPLS_MAC_ALARM	1515
+FEISW_CST_VPLS_SELECTBOARD_NODEID	1091
+FEISW_CST_VPLS_SELECTBOARD_INSTID	1092
+
+
+相关设计文档归档地址：
+http://szxsvn06-rd:6801/svn/NW_PTN_Aggregate_SVN/PTN 5900 V100R006C00/03.软件开发测试组/01. 软件开发组/03. 开发组/03.L2开发组/11.L2组软件资产/03.软件设计开发规范/设计阶段/MAC告警设计
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~更多专网定位手段请参考7900团队空间帖子~~~~
+专网定位手册http://3ms.huawei.com/hi/group/1007063/wiki_3021799.html?for_statistic_from=all_group_wiki
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
