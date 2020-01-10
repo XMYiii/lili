@@ -1,0 +1,91 @@
+下发查询：
+<?xml version="1.0" encoding="utf-8"?>
+<rpc xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="">
+  <huawei-mac:mac-address-table-get xmlns:huawei-mac="urn:huawei:params:xml:ns:yang:huawei-mac">
+    <huawei-mac:get-num>6</huawei-mac:get-num>
+    <huawei-mac:destination-address>
+      <huawei-mac:mac-address>22:33:33:33:44:22</huawei-mac:mac-address>
+      <huawei-mac:id-type>vlan</huawei-mac:id-type>
+      <huawei-mac:id>4</huawei-mac:id>
+      <huawei-mac:interface>GigabitEthernet0/0/3</huawei-mac:interface>
+      <huawei-mac:search-type>interface</huawei-mac:search-type>
+    </huawei-mac:destination-address>
+  </huawei-mac:mac-address-table-get>
+</rpc>
+
+返回查询结果：.
+<?xml version="1.0" encoding="utf-8"?>
+<rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="10">
+  <data>
+    <mac-address-table-get xmlns="urn:huawei:params:xml:ns:yang:huawei-mac">
+      <mac-address-details>
+        <mac-address>00:00:00:66:87:60</mac-address>
+        <id>2</id>
+        <forwarding-interface>GigabitEthernet0/0/6</forwarding-interface>
+        <id-type>vlan</id-type>
+        <mac-type>dynamic</mac-type>
+      </mac-address-details>
+      <mac-address-details>
+        <mac-address>00:01:00:01:61:17</mac-address>
+        <id>2</id>
+        <forwarding-interface>GigabitEthernet0/0/6</forwarding-interface>
+        <id-type>vlan</id-type>
+        <mac-type>dynamic</mac-type>
+      </mac-address-details>
+      <has-more>true</has-more>
+    </mac-address-table-get>
+  </data>
+</rpc-reply>
+
+返回2：
+<?xml version="1.0" encoding="utf-8"?>
+<rpc-reply xmlns="urn:ietf:params:xml:ns:netconf:base:1.0" message-id="11">
+  <data>
+    <mac-address-table-get xmlns="urn:huawei:params:xml:ns:yang:huawei-mac">
+      <has-more>false</has-more>
+    </mac-address-table-get>
+  </data>
+</rpc-reply>
+3.2.3 api交互格式
+# API请求示例1
+<vrp-api>
+    <name>mac_get_mac_address_by_filter</name>
+    <data>
+        <get-num>100</get-num>
+        <case>0/1</case>      —————表示choice的第一个case和第二个case
+        <mac-address>00:00:00:00:00:01</mac-address>
+        <id-type>1</id-type>         ——————1|2|3  分别代表 vlan|vsi|bd
+        <id>100</id>
+        <interface>GigabitEthernet6/0/30</interface>
+        <search-type>1</serach-type>      ————1|2|3|4  分别代表 interface|vlan|mac|all
+    </data>
+</vrp-api>
+
+# API返回
+ <vrp-api-ack>
+     <name>mac_get_mac_address_by_filter</name>
+       <result>
+         <has-more>false</has-more>
+       </result>
+ </vrp-api-ack>
+
+<vrp-api-ack>
+    <name>mac_get_mac_address_by_filter</name>
+    <result>
+        <mac-address-details>
+            <mac-address>00:00:00:00:00:02</mac-address>
+            <id-type>1</id-type>
+            <id>100</id>
+            <mac-type>3</mac-type>
+            <forwarding-interface>GigabitEthernet6/0/30</forwarding-interface>
+        </mac-address-details>
+        <mac-address-details>
+            <mac-address>00:00:00:00:00:03</mac-address>
+            <id-type>1</id-type>
+            <id>100</id>
+            <mac-type>3</mac-type>                 --------表示dynamic——只支持3
+            <forwarding-interface>GigabitEthernet6/0/30</forwarding-interface>
+        </mac-address-details>
+        <has-more>true/false</has-more>
+    </result>
+</vrp-api-ack>
