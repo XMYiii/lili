@@ -1,0 +1,256 @@
+1.1	mTCA trunk配置
+给上层提供解除LAN3和LAN4端口trunk的背景是：LAN3/LAN4在产品应用环境中可能外挂文件服务器，每个文件服务器出两个非绑定的端口分别连接7槽和8槽的LAN3或者LAN4上，这样就会出现访问不通情形，需要解除mTCA的默认LAN3/LAN4 trunk划分，使之成为独立网口。
+1.1.1	单板上下电初始化配置分析
+GESW_SwitchInit LSW初始化函数 会先后调用GESW_LoadPortTrunkInfo和GESW_GeTrunk
+GESW_LoadPortTrunkInfo 面板LAN3/LAN4 truank划分保存在flash里的配置恢复函数，              会通过全局变量gastrGeswPlanePortTrunkInfo作为入参和出参调用SYS_GetTrunkInfo获取flash中存储内容，更新后，通过调用SYS_SaveTrunkInfo把内容再次存储到flash中。(这里有配置恢复场景设计，框号等条件，如果上层不会重新加载配置，单板被插到其它框后，可能导致配置丢失)
+SYS_SaveTrunkInfo 会把配置信息保存到Flash中。
+GESW_GeTrunk  配置背板trunk组和面板thunk组会调用GESW_InitGeTrunkPortInfo、GESW_CfgGeTrunk。
+GESW_InitGeTrunkPortInfo通过gastrGeswPlanePortTrunkInfo赋值给gastrGeswPortStateInfo
+GESW_CfgGeTrunk  通过gastrGeswPortStateInfo实际配置trunk生效
+1.1.2	对dopra和上层OMU提供的MML设置接口
+%%SET NETTRUNK: SRN=2, SMUN=2, PORT=4, MODED=REMOVE;%% %%SET NETTRUNK: SRN=2, SMUN=2, PORT=4, MODED=ADD;%% 
+UINT32 	GESW_AddPanelPortToTrunk (UINT32 uiTrunkId, UINT8 ucPort)
+
+ 	将面板端口添加到默认的的TRUNK组中 
+UINT32 	GESW_DelPanelPortFromTrunk (UINT32 uiTrunkId, UINT8 ucPort)
+
+ 	将面板端口从端口默认的TRUNK组中删除 
+
+两个接口函数都会调用GESW_CfgGeTrunk使得配置生效 且根据条件调用SYS_SaveTrunkInfo把配置信息保存到flash。
+
+
+1.2	LAN3/LAN4端口解trunk测试.
+
+1.2.1	LAN3/LAN4 trunk划分现状：默认配置LAN3和LAN4都在trunk 20里
+[Local Ge20] Link=0, Trunk=0, Oam=0, OamTrunk=0, ucTrunkEnFlg=1
+[Remot Ge20] Link=0, Trunk=0, Oam=0, OamTrunk=0, ucTrunkEnFlg=1
+
+[Local Ge21] Link=0, Trunk=0, Oam=0, OamTrunk=0, ucTrunkEnFlg=1
+[Remot Ge21] Link=0, Trunk=0, Oam=0, OamTrunk=0, ucTrunkEnFlg=1
+其实现的机制是：获取Flash中保存的trunk配置，如果没有就默认配置为LAN3/LAN4 trunk划分trunk 20里。
+1.2.2	LAN3/LAN4 trunk划分现状：给上层软件提供接口可删除trunk划分
+
+//MML命令分别设置2框  1号SMU(7槽)，2号SMU(8槽)的端口LAN4解TRUNK
+%%SET NETTRUNK: SRN=2, SMUN=1, PORT=4, MODED=REMOVE; %%
+%%SET NETTRUNK: SRN=2, SMUN=2, PORT=4, MODED=REMOVE;%%
+
+//7槽SCU单板获取LAN3/LAN4端口是否在trunk组中方法。0表示不在trunk组中；Ge20-->LAN4.
+
+SCU#0->GESW_PrintPortOamInfo
+[Local Ge20] Link=0, Trunk=0, Oam=0, OamTrunk=0, ucTrunkEnFlg=0
+[Remot Ge20] Link=0, Trunk=0, Oam=0, OamTrunk=0, ucTrunkEnFlg=0
+
+ [Local Ge21] Link=0, Trunk=0, Oam=0, OamTrunk=0, ucTrunkEnFlg=1
+[Remot Ge21] Link=0, Trunk=0, Oam=0, OamTrunk=0, ucTrunkEnFlg=1
+
+[Local Ge22] Link=1, Trunk=1, Oam=1, OamTrunk=1, ucTrunkEnFlg=1
+[Remot Ge22] Link=1, Trunk=0, Oam=1, OamTrunk=1, ucTrunkEnFlg=0
+
+[Local Ge23] Link=1, Trunk=1, Oam=1, OamTrunk=1, ucTrunkEnFlg=1
+[Remot Ge23] Link=1, Trunk=0, Oam=1, OamTrunk=1, ucTrunkEnFlg=0
+
+1.3	trunk选路
+可用的trunk选路方式有以下几种方式：
+#define BCM_TRUNK_PSC_SRCMAC    1          /* Source MAC address. */
+#define BCM_TRUNK_PSC_DSTMAC    2          /* Destination MAC address. */
+#define BCM_TRUNK_PSC_SRCDSTMAC 3          /* Source+dest MAC address. */
+#define BCM_TRUNK_PSC_SRCIP     4          /* Source IP address. */
+#define BCM_TRUNK_PSC_DSTIP     5          /* Destination IP address. */
+#define BCM_TRUNK_PSC_SRCDSTIP  6          /* Source+dest IP address. */
+#define BCM_TRUNK_PSC_REDUNDANT 7          /* Redundant (xgs_fabric). */
+#define BCM_TRUNK_PSC_PORTINDEX 8          /* Port index. */
+#define BCM_TRUNK_PSC_PORTFLOW  9          /* Enhanced hashing. */
+
+mTCA交换网选用的规则为Source+dest IP的方式：
+/* BEGIN: Modified by w00142473, 2010/10/8 问题单号:DTS2010092602920 */
+/* 配合集中转发，修改 HG trunk 选路为SIP+DIP */
+#define BCM_TRUNK_PSC_DEFAULT   BCM_TRUNK_PSC_SRCDSTIP
+/* END:   Modified by w00142473, 2010/10/8 */
+
+函数GESW_CfgGeTrunk 配置选路规则为Source+dest IP：
+strTrunk.psc = GESW_TRUNK_PSC_DEFAULT;  
+
+选路规则配置给交换芯片后，交换芯片自动工作无须驱动软件进一步处理，BCM_TRUNK_PSC_SRCDSTMAC和BCM_TRUNK_PSC_SRCDSTIP方式基本原理如下：
+
+对进入端口的报文的源Mac地址(或源Ip地址)中的低3位和目的Mac(或目的Ip地址)的低3位进行异或，对汇聚端口的个数进行求余，得出的余数就是汇聚端口的编号，从而确定该报文应该往哪个汇聚端口转发。
+Port = ( 源Mac地址(或源Ip地址中)的低3位 ^  目的Mac(或目的Ip地址)的低3位 ) % 汇聚端口的个数
+(上式中的%是指求余运算符)
+举例：有3个报文进入汇聚端口，报文的源Mac地址和目的Mac地址如下：
+源Mac地址：0.0.11，0.0.12，0.0.13
+目的Mac地址：0.0.5，0.0.27，0.0.19
+汇聚端口的个数为4个，编号为0、1、2、3
+则第一个报文的出端口为：
+(0.0.11的低3位 ^ 0.0.5的低3位) % 4 = 0 % 4 = 0
+则第一个报文应该从汇聚端口 0 转发出去。
+同理，报文2，3分别从端口1和2 转发出去。
+
+1.3.1	选路tesgin测试
+测试级联lan1和lan2组成的trunk链路选路
+Tesgin发包端口接SCU的LAN4端口；发送报文配置为：选用IP报文类型，目的mac地址配置为交换机的vlanif mac地址，目的ip地址配置为交换机的vlanif IP地址。测试结果如下：
+(1)报文目的ip和源ip配置下选trunk端口的GigabitEthernet0/0/1
+ 
+<Quidway>dis mac-add
+MAC address table of slot 0:
+-------------------------------------------------------------------------------
+MAC Address    VLAN/       PEVLAN CEVLAN Port            Type      LSP/LSR-ID
+               VSI/SI                                              MAC-Tunnel
+-------------------------------------------------------------------------------
+0000-c101-0303 1           -      -      Eth-Trunk1      dynamic   -
+
+<Quidway>dis int brief
+Interface                   PHY   Protocol InUti OutUti   inErrors  outErrors
+Eth-Trunk1                  up    up          0%     0%          0          0
+  GigabitEthernet0/0/1      up    up       5.61%  0.01%          1          0
+  GigabitEthernet0/0/2      up    up       0.01%  0.01%          2          0
+<Quidway>dis interface Vlanif
+Vlanif1 current state : UP
+Internet Address is 172.8.141.141/16
+IP Sending Frames' Format is PKTFMT_ETHNT_2, Hardware address is 101b-54d5-ae74
+(2) 报文目的ip和源ip配置下选trunk端口的GigabitEthernet0/0/2
+ 
+Tesgin发出的源mac地址未改变
+<Quidway>dis int brief
+Interface                   PHY   Protocol InUti OutUti   inErrors  outErrors
+Eth-Trunk1                  up    up          0%     0%          0          0
+  GigabitEthernet0/0/1      up    up       0.01%  0.01%          1          0
+  GigabitEthernet0/0/2      up    up         47%  0.01%          2          0
+SCU#0->sh_process_command 0,"show c"
+GRPKT.ge21      :           228,514,910        +185,584,933          97,958/s
+GRBYT.ge21      :       199,134,732,076    +186,326,578,332      98,300,074/s
+SCU#0->sh_process_command 0,"ps"
+         ena/  speed/ link auto    STP                  lrn  inter   max  loop
+   port  link  duplex scan neg?   state   pause  discrd ops   face frame  back
+    ge0  up     1G FD   SW  Yes  Forward          None   FA   GMII  1518
+    ge1  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+    ge2  up     1G FD   SW  Yes  Forward          None   FA   GMII  1518
+    ge3  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+    ge4  up     1G FD   SW  Yes  Forward          None   FA   GMII  1518
+    ge5  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+    ge6  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+    ge7  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+    ge8  up     1G FD   SW  Yes  Forward          None   FA   GMII  1518
+    ge9  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+   ge10  up     1G FD   SW  Yes  Forward          None   FA   GMII  1518
+   ge11  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+   ge12  up     1G FD   SW  Yes  Forward          None   FA   GMII  1518
+   ge13  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+   ge14  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+   ge15  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+   ge16  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+   ge17  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+   ge18  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+   ge19  down   1G FD   SW  Yes  Disable  TX RX   None   FA   GMII  1518
+   ge20  down    -      SW  Yes  Disable          None   FA  SGMII  1518
+   ge21  up     1G FD   SW  Yes  Forward          None   FA  SGMII  1518
+   ge22  up     1G FD   SW  Yes  Forward          None   FA  SGMII  1518
+   ge23  up     1G FD   SW  Yes  Forward          None   FA  SGMII  1518
+    hg0  up    10G FD   SW  No   Forward          None    F  XGMII 16360
+    hg1  up    10G FD   SW  No   Forward          None    F  XGMII 16360
+value = 0 = 0x0
+SCU#0->sh_process_command 0,"l2 show"
+mac=00:00:c1:01:03:02 vlan=1 modid=0 port=20/ge20
+mac=00:18:82:02:00:87 vlan=1 modid=0 port=28/cpu0 Static CPU
+mac=00:18:82:02:00:8b vlan=1 modid=0 port=0/ge0 Trunk=10 Rtag=6
+mac=00:18:82:02:20:88 vlan=1 modid=1 port=28   Static CPU
+mac=00:00:c1:01:03:03 vlan=1 modid=0 port=0/ge0 Trunk=20 Rtag=6
+mac=00:00:c1:01:01:02 vlan=1 modid=0 port=0/ge0 Trunk=20 Rtag=6
+mac=00:18:82:02:00:83 vlan=1 modid=0 port=0/ge0 Trunk=2 Rtag=6
+mac=10:1b:54:d5:ad:d7 vlan=1 modid=0 port=0/ge0 Trunk=21 Rtag=6
+mac=00:18:82:02:00:8d vlan=1 modid=0 port=0/ge0 Trunk=12 Rtag=6
+mac=10:1b:54:d5:ae:74 vlan=1 modid=0 port=0/ge0 Trunk=21 Rtag=6
+mac=00:18:82:02:00:88 vlan=1 modid=1 port=28   Static CPU
+mac=00:18:82:02:00:85 vlan=1 modid=0 port=0/ge0 Trunk=4 Rtag=6
+mac=00:18:82:02:00:81 vlan=1 modid=0 port=0/ge0 Trunk=0 Rtag=6
+mac=00:18:82:02:00:89 vlan=1 modid=0 port=0/ge0 Trunk=8 Rtag=6
+mac=00:00:c1:01:02:02 vlan=1 modid=0 port=0/ge0 Trunk=21 Rtag=6
+mac=00:18:82:02:20:87 vlan=1 modid=0 port=28/cpu0 Static CPU
+value = 0 = 0x0
+SCU#0->
+
+1.4	端口和trunk的对应关系
+1.4.1	查看端口和trunk对应关系方法：
+方法一：端口对应关系dfxshow "-d"  可以看到端口和槽位的对应关系。
+     另外：
+#define ETHOAM_LSW_PANEL1_GE_PORT       23
+#define ETHOAM_LSW_PANEL2_GE_PORT       22
+#define ETHOAM_LSW_PANEL3_GE_PORT       21
+#define ETHOAM_LSW_PANEL4_GE_PORT       20
+#define ETHOAM_LSW_HG0_PORT               24
+#define ETHOAM_LSW_HG1_PORT               25             
+方法二：
+SCU单板
+\\hghnas01a-rd\IT_VMP_HZ_15F\PB21432201_mTCA V100R005C03SPC108B029\ReleaseDoc\Docs\V1
+      《mTCA V100R005 告警(中文).chm》ALM-2510告警的帮助信息说明里也有说明：
+	对于SMU单板，背板网口与背板槽位的对应关系如下：
+	0对应槽位1
+	1对应槽位2
+	2对应槽位3
+	3对应槽位4
+	4对应槽位5
+	5对应槽位6
+	6对应槽位23
+	7对应槽位24
+	8对应槽位9
+	9对应槽位10
+	10对应槽位11
+	11对应槽位12
+	12对应槽位13
+	13对应槽位14
+	14对应槽位25
+	15对应槽位26
+	16对应槽位17
+	17对应槽位18
+	18对应槽位19
+	19对应槽位20
+	对于其他单板，背板网口与背板槽位的对应关系如下：
+	0对应槽位7
+	1对应槽位8
+	对于SMU单板，两个HG网口与背板槽位的对应关系为：24、25对应另一块SMU单板槽位。
+	即本端单板槽位为7时，对应槽位8；本端单板槽位为8时，对应槽位7
+        
+说明，网口故障对外统一呈现为ALM-2510 网口故障告警，具体原因是2511告警,说明是link状态故障
+V2 SCU单板
+\\hghnas01a-rd\IT_VMP_HZ_15F\PB21432201_mTCA V100R005C03SPC108B029\ReleaseDoc\Docs\V2
+	《mTCA V200R001C00 告警帮助.chm》ALM-2510告警的帮助信息说明里也有说明：
+
+	对于SMU单板，背板网口与背板槽位的对应关系如下：
+
+	8、9对应本端单板
+	10对应槽位6
+
+	11对应槽位7
+	12对应槽位5
+	13对应槽位8
+	14对应槽位9
+	15对应槽位12
+	16对应槽位1
+	17对应槽位3
+	18对应槽位2
+	19对应槽位4
+	26、27对应另一块SMU单板槽位。即本端单板槽位为10时，对应槽位11；本端单板槽位为11时，对应槽位10
+
+	对于其它单板，背板网口与背板槽位的对应关系如下：
+	0对应槽位10
+	1对应槽位11
+1.4.2	对应关系表代码定义处：
+     _bcmx_linkscan_handler函数中
+   
+        /*增加槽位号与背板GE组对应表*/
+        static UINT8 gaucGeswSlotToGeInfo[24] =
+        {
+         1,2,3,4,5,6,23,24,
+            9,10,11,12,13,14,25,26,
+            17,18,19,20,0,0,0,0
+        };
+        gaucGeswSlotToGeInfo[20] = GESW_CURRENT_SLOT;
+        gaucGeswSlotToGeInfo[21] = GESW_CURRENT_SLOT;
+        gaucGeswSlotToGeInfo[22] = GESW_CURRENT_SLOT;
+        gaucGeswSlotToGeInfo[23] = GESW_CURRENT_SLOT;
+
+      
+  
+
+
+      
+
+
