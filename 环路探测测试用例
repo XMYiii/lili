@@ -1,0 +1,54 @@
+....		羊云飞	LSW_LOOPTEST_FUNC_LswLoop_001	大模式下，交换机有配ACL，交换机有环路测试	1、大模式下，主备SCU单板均起到上层；	"1、用一根网线连接同一交换机的2个非trunk，模拟交换机环路；其它组网正常且交换机配有ACL功能；
+2、观察主备SCU上是否有告警产生和恢复；
+3、观察主备SCU是否有面板端口被踢出trunk，是否有告警上报，踢出后端口link状态、L2表项学习功能、OAM状态怎样，trunk中端口数以及OAM状态；
+4、去除环路，调用MOD PORT命令使能主备SCU面板端口，观察主备SCU是否有告警恢复，踢出端口是否加入trunk，观察端口link状态、L2表项学习功能、OAM状态；
+5、遍历其它环路场景，如两个交换机之间连线、不同trunk连线、同一trunk连线等"	"2、主备SCU均有2548参数为1告警产生，备用SCU该告警恢复，且主备SCU均有2548参数为5/6告警产生，最后主用SCU有2548参数为7告警产生
+3、主备SCU均有踢出端口，linkup、L2学习功能关闭、OAM禁止且不满意；trunk中只有1个端口，且OAM状态OK；
+4、告警恢复、加入trunk、linkup、开启L2学习、OAM使能且满意
+5、现象一样"	$V1SCU$	Level 2	FALSE		功能测试	TEP_GTR_TTCN	MTCA_V1_LN
+....		羊云飞	LSW_LOOPTEST_FUNC_LswLoop_002	大模式下，交换机未配ACL，交换机有环路测试	1、大模式下，主备SCU单板均起到上层；	"1、用一根网线连接同一交换机的2个非trunk，模拟交换机环路；其它组网正常且交换机配无ACL功能；
+2、观察主备SCU上是否有告警产生和恢复；
+3、观察主备SCU是否有面板端口被踢出trunk，是否有告警上报，踢出后端口link状态、L2表项学习功能、OAM状态怎样；
+4、去除环路，配置ACL，调用MOD PORT命令使能主备SCU面板端口，观察主备SCU是否有告警恢复，踢出端口是否加入trunk，观察端口link状态、L2表项学习功能、OAM状态；
+5、遍历其它环路场景，如两个交换机之间连线、不同trunk连线、同一trunk连线等"	"2、主备SCU均有2548参数为1告警产生，备用SCU该告警恢复，且主备SCU均有2548参数为5/6告警产生，最后主用SCU有2548参数为7告警产生
+3、主备SCU均有踢出端口，linkdown；trunk中只有1个端口，且OAM状态OK；
+4、告警恢复、加入trunk、linkup、开启L2学习、OAM使能且满意
+5、现象一样"	$V1SCU$	Level 2	FALSE		功能测试	TEP_GTR_TTCN	MTCA_V1_LN
+....		羊云飞	LSW_LOOPTEST_FUNC_NoTrunk_001	大模式下，主用SCU连接交换机侧未配trunk，备用SCU侧正常且有ACL测试	1、大模式下，主备SCU单板均起到上层；	"1、主用SCU链路连接至交换机侧2个端口未配trunk；备用SCU链路正常且交换机侧配有ACL；
+2、观察主备SCU上是否有告警产生和恢复；
+3、观察主备SCU是否有面板端口被踢出trunk，是否有告警上报，踢出后端口link状态、L2表项学习功能、OAM状态怎样；
+4、去除环路，调用MOD PORT命令使能主备SCU面板端口，观察主备SCU是否有告警恢复，踢出端口是否加入trunk，观察端口link状态、L2表项学习功能、OAM状态；"	"2、主用SCU上有2548参数为1告警产生和恢复，并上报2548参数为5/6的告警，备用单板无告警；
+3、主SCU有踢出端口，linkdown，备用无踢出端口；trunk中主SCU只有1个端口，备SCU有2个，且OAM状态均OK；
+4、告警恢复、加入trunk、linkup、开启L2学习、OAM使能且满意"	$V1SCU$	Level 2	FALSE		功能测试	TEP_GTR_TTCN	MTCA_V1_LN
+....		羊云飞	LSW_LOOPTEST_FUNC_NoTrunk_002	大模式下，主用SCU连接交换机侧未配trunk，备用SCU侧正常且无ACL测试	1、大模式下，主备SCU单板均起到上层；	"1、主用SCU链路连接至交换机侧2个端口未配trunk；备用SCU链路正常且交换机侧未配ACL；
+2、观察主备SCU上是否有告警产生和恢复；
+3、观察主备SCU是否有面板端口被踢出trunk，是否有告警上报，踢出后端口link状态、L2表项学习功能、OAM状态怎样；
+4、去除环路，配置ACL，调用MOD PORT命令使能主备SCU面板端口，观察主备SCU是否有告警恢复，踢出端口是否加入trunk，观察端口link状态、L2表项学习功能、OAM状态；"	"2、主用SCU上有2548参数为1告警产生和恢复，并上报2548参数为5/6的告警，备用单板有2542告警；
+3、主SCU有踢出端口相关2548告警，linkdown，备用无踢出端口；trunk中主SCU只有1个端口，备SCU有2个，且OAM状态均不OK；
+4、告警恢复、加入trunk、linkup、开启L2学习、OAM使能且满意"	$V1SCU$	Level 2	FALSE		功能测试	TEP_GTR_TTCN	MTCA_V1_LN
+....		羊云飞	LSW_LOOPTEST_FUNC_NoTrunk_003	大模式下，备用SCU连接交换机侧未配trunk，主用SCU侧正常且有ACL测试	1、大模式下，主备SCU单板均起到上层；	"1、备用SCU链路连接至交换机侧2个端口未配trunk；主用SCU链路正常且交换机侧配有ACL；
+2、观察主备SCU上是否有告警产生和恢复；
+3、观察主备SCU是否有面板端口被踢出trunk，是否有告警上报，踢出后端口link状态、L2表项学习功能、OAM状态怎样；
+4、主备倒换，再执行2、3步骤；
+5、调用MOD PORT命令使能主备SCU面板端口，观察主备SCU是否有告警恢复，踢出端口是否加入trunk，观察端口link状态、L2表项学习功能、OAM状态；"	"2、主用链路无告警，备用SCU会有2542告警；
+3、主备均无被踢出端口，trunk中主备均有2个端口，主用OAM均OK，备用均不OK；
+4、主备倒换后，主用链路未配trunk故障，备用链路正常：
+2）主用SCU上有2548参数为1告警产生和恢复，并上报2548参数为5/6的告警，备用单板无告警；
+3）主SCU有踢出端口，linkdown，备用无踢出端口；trunk中主SCU只有1个端口，备SCU有2个，且OAM状态均OK；
+5、告警恢复、加入trunk、linkup、开启L2学习、OAM使能且满意"	$V1SCU$	Level 2	FALSE		功能测试	TEP_GTR_TTCN	MTCA_V1_LN
+....		羊云飞	LSW_LOOPTEST_FUNC_NoTrunk_004	大模式下，备用SCU连接交换机侧未配trunk，主用SCU侧正常且无ACL测试	1、大模式下，主备SCU单板均起到上层；	"1、备用SCU链路连接至交换机侧2个端口未配trunk；主用SCU链路正常且交换机侧未配ACL；
+2、观察主备SCU上是否有告警产生和恢复；
+3、观察主备SCU是否有面板端口被踢出trunk，是否有告警上报，踢出后端口link状态、L2表项学习功能、OAM状态怎样；
+4、主备倒换，再执行2、3步骤；
+5、配置ACL，调用MOD PORT命令使能主备SCU面板端口，观察主备SCU是否有告警恢复，踢出端口是否加入trunk，观察端口link状态、L2表项学习功能、OAM状态；"	"2、主备SCU均有2542告警；
+3、主备均无被踢出端口，trunk中主备均有2个端口，主备用OAM均不OK；
+4、主备倒换后，主用链路未配trunk故障，备用链路正常无ACL：
+2）主用SCU上有2548参数为1告警产生和恢复，并上报2548参数为5/6的告警，备用单板有2542告警；
+3）主SCU有踢出端口相关2548告警，linkdown，备用无踢出端口；trunk中主SCU只有1个端口，备SCU有2个，且OAM状态均不OK；
+5、告警恢复、加入trunk、linkup、开启L2学习、OAM使能且满意"	$V1SCU$	Level 2	FALSE		功能测试	TEP_GTR_TTCN	MTCA_V1_LN
+....		羊云飞	LSW_LOOPTEST_FUNC_NoTrunk_005	大模式下，主备SCU连接交换机侧均未配trunk测试	1、大模式下，主备SCU单板均起到上层；	"1、主备用SCU链路连接至交换机侧2个端口均未配trunk；
+2、观察主备SCU上是否有告警产生和恢复；
+3、观察主备SCU是否有面板端口被踢出trunk，是否有告警上报，踢出后端口link状态、L2表项学习功能、OAM状态怎样；
+4、调用MOD PORT命令使能主备SCU面板端口，观察主备SCU是否有告警恢复，踢出端口是否加入trunk，观察端口link状态、L2表项学习功能、OAM状态；"	"2、主备用SCU上有2542产生，2548参数为1告警产生和恢复；主备SCU均有踢出端口的2548参数为5/6的告警；
+3、主备SCU均有踢出端口，linkdown，踢出端口2542告警恢复；trunk中主备SCU只有1个端口，且OAM状态均OK；
+4、告警恢复、加入trunk、linkup、开启L2学习、OAM使能且满意"	$V1SCU$	Level 2	FALSE		功能测试	TEP_GTR_TTCN	MTCA_V1_LN
