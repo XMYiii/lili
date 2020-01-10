@@ -1,0 +1,256 @@
+<mTCA-S5328UAP-Down>
+#
+!Software Version V100R005C00SPC100
+ sysname mTCA-S5328UAP-Down
+#
+ vlan batch 1 20
+#
+ stp instance 0 root primary
+ stp bpdu-protection
+ stp enable
+#
+ cluster enable
+ ntdp enable
+ ntdp hop 16
+ ndp enable
+#
+ undo http server enable
+#
+ drop illegal-mac alarm
+#
+acl number 4000
+ rule 1 permit l2-protocol 0x10b5
+ rule 2 permit l2-protocol 0x10b6
+#
+vlan 20
+ description To UAP6600-SMU-8
+#
+aaa
+ authentication-scheme default
+ authorization-scheme default
+ accounting-scheme default
+ domain default
+ domain default_admin
+ local-user admin password simple admin
+ local-user admin service-type http
+#
+interface Vlanif1
+#
+interface MEth0/0/1
+#
+interface Eth-Trunk0
+ description S5328-2-HuLian
+ port link-type trunk
+ port trunk allow-pass vlan 1 to 4094
+ mode lacp-static
+ lacp timeout fast
+ lacp preempt enable
+ max active-linknumber 4
+ bpdu enable
+ stp disable
+#
+interface Eth-Trunk1
+ description UAP6600-SMU8
+ port link-type access
+ port default vlan 20
+ traffic-redirect inbound acl 4000 rule 1 interface GigabitEthernet0/0/1
+ traffic-redirect inbound acl 4000 rule 2 interface GigabitEthernet0/0/2
+#
+interface Eth-Trunk2
+ port link-type access
+ port default vlan 20
+ traffic-redirect inbound acl 4000 rule 1 interface GigabitEthernet0/0/3
+ traffic-redirect inbound acl 4000 rule 2 interface GigabitEthernet0/0/4
+#
+interface Eth-Trunk3
+ port link-type access
+ port default vlan 20
+ traffic-redirect inbound acl 4000 rule 1 interface GigabitEthernet0/0/5
+ traffic-redirect inbound acl 4000 rule 2 interface GigabitEthernet0/0/6
+#
+interface Eth-Trunk4
+ port link-type access
+ port default vlan 20
+ traffic-redirect inbound acl 4000 rule 1 interface GigabitEthernet0/0/7
+ traffic-redirect inbound acl 4000 rule 2 interface GigabitEthernet0/0/8
+#
+interface Eth-Trunk5
+ port link-type access
+ port default vlan 20
+#
+interface Eth-Trunk6
+ port link-type access
+ port default vlan 20
+#
+interface GigabitEthernet0/0/1
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 1
+#
+interface GigabitEthernet0/0/2
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 1
+#
+interface GigabitEthernet0/0/3
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 2
+#
+interface GigabitEthernet0/0/4
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 2
+#
+interface GigabitEthernet0/0/5
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 3
+#
+interface GigabitEthernet0/0/6
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 3
+#
+interface GigabitEthernet0/0/7
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 4
+#
+interface GigabitEthernet0/0/8
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 4
+#
+interface GigabitEthernet0/0/9
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 5
+#
+interface GigabitEthernet0/0/10
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 5
+#
+interface GigabitEthernet0/0/11
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 6
+#
+interface GigabitEthernet0/0/12
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 6
+#
+interface GigabitEthernet0/0/13
+ port link-type access
+ port default vlan 20
+ ntdp enable
+ ndp enable
+ bpdu enable
+#
+interface GigabitEthernet0/0/14
+ port link-type access
+ port default vlan 20
+ ntdp enable
+ ndp enable
+ bpdu enable
+#
+interface GigabitEthernet0/0/15
+ port link-type access
+ port default vlan 20
+ ntdp enable
+ ndp enable
+ bpdu enable
+#
+interface GigabitEthernet0/0/16
+ port link-type access
+ port default vlan 20
+ ntdp enable
+ ndp enable
+ bpdu enable
+#
+interface GigabitEthernet0/0/17
+ port link-type access
+ port default vlan 20
+ ntdp enable
+ ndp enable
+ bpdu enable
+#
+interface GigabitEthernet0/0/18
+ port link-type access
+ port default vlan 20
+ ntdp enable
+ ndp enable
+ bpdu enable
+#
+interface GigabitEthernet0/0/19
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 0
+#
+interface GigabitEthernet0/0/20
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 0
+#
+interface GigabitEthernet0/0/21
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 0
+#
+interface GigabitEthernet0/0/22
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 0
+#
+interface GigabitEthernet0/0/23
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 0
+#
+interface GigabitEthernet0/0/24
+ undo ntdp enable
+ undo ndp enable
+ bpdu disable
+ eth-trunk 0
+#
+interface GigabitEthernet0/1/1
+ ntdp enable
+ ndp enable
+ bpdu enable
+#
+interface GigabitEthernet0/1/2
+ ntdp enable
+ ndp enable
+ bpdu enable
+#
+interface NULL0
+#
+ snmp-agent
+ snmp-agent local-engineid 000007DB7F0000010000251D
+ snmp-agent sys-info version v3
+#
+user-interface con 0
+user-interface vty 0 4
+#
+return
+<mTCA-S5328UAP-Down>
+
